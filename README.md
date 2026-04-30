@@ -6,12 +6,16 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 
 - **Async drafting** — configurable pick timer (default 12 hours); auto-pick fires if the timer expires
 - **Real-time board** — Socket.io pushes live updates to anyone watching the draft room
-- **Custom item pools** — commissioners define any pool of items to draft from (players, teams, movies, etc.)
+- **Custom item pools** — commissioners define any pool of items to draft from (players, teams, movies, etc.); add items one at a time or bulk-import from a newline-separated list
+- **Bucket / category system** — items can be grouped into named buckets (e.g. UPPER, LOWER, GIRL, REC); displayed as columns in both the league setup and the draft room
+- **Enforce bucket picking** — optional commissioner setting that prevents drafters from picking more than one item per bucket; a live status bar in the draft room shows which buckets are used up
+- **Drag-and-drop bucket assignment** — commissioners can drag items between bucket columns in league setup to reassign them; dropping on the "No bucket" column clears the assignment
 - **Snake & linear formats** — with the strategy pattern in place for adding more formats later
 - **Email + SMS notifications** — via SendGrid and Twilio
-- **Item notes** — commissioners write public notes on any item (bucket labels, context, etc.); each drafter can also keep private personal notes per item visible only to them
+- **Item notes** — commissioners write public notes on any item; each drafter keeps private personal notes per item visible only to them; commissioner notes are inline-editable without leaving the page
 - **Invite flow** — commissioners invite members by email; invitees create an account on accept
-- **Secure auth** — JWT access tokens (15 min) + HttpOnly refresh tokens (30 day rotation)
+- **Dashboard navigation** — dashboard shows live draft status per league; non-commissioners see a "Go to Draft" or "Pick Now" link when it's their turn
+- **Secure auth** — JWT access tokens (15 min, auto-refreshed silently) + HttpOnly refresh tokens (30-day rotation)
 
 ## Tech Stack
 
@@ -116,12 +120,12 @@ All routes are prefixed with `/api/v1`. Most require a `Bearer <accessToken>` he
 
 | Group | Key Endpoints |
 |---|---|
-| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout` |
-| Leagues | `POST /leagues`, `GET /leagues`, `PUT /leagues/:id/settings` |
-| Members | `POST /leagues/:id/members/invite`, `POST /leagues/:id/members/randomize-order` |
-| Items | `POST /leagues/:id/items/bulk`, `GET /leagues/:id/items`, `PATCH /leagues/:id/items/:itemId` |
+| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/invite/accept/:token` |
+| Leagues | `POST /leagues`, `GET /leagues`, `GET /leagues/:id`, `PATCH /leagues/:id`, `PUT /leagues/:id/settings` |
+| Members | `GET /leagues/:id/members`, `POST /leagues/:id/members/invite`, `POST /leagues/:id/members/randomize-order`, `DELETE /leagues/:id/members/:memberId` |
+| Items | `GET /leagues/:id/items`, `POST /leagues/:id/items`, `POST /leagues/:id/items/bulk`, `PATCH /leagues/:id/items/:itemId`, `DELETE /leagues/:id/items/:itemId` |
 | Item Notes | `GET /leagues/:id/items/:itemId/notes`, `PUT /leagues/:id/items/:itemId/notes/mine` |
-| Draft | `POST /leagues/:id/draft/start`, `POST /leagues/:id/draft/picks` |
+| Draft | `POST /leagues/:id/draft/start`, `POST /leagues/:id/draft/pause`, `POST /leagues/:id/draft/resume`, `GET /leagues/:id/draft`, `GET /leagues/:id/draft/board`, `POST /leagues/:id/draft/picks` |
 
 ## Running Tests
 
@@ -182,14 +186,6 @@ After both services deploy for the first time:
 ### Architecture note
 
 The BullMQ pick-timer worker runs **in-process** alongside the API server (not as a separate service). This keeps costs low for a hobby deployment and ensures auto-picks can emit real-time Socket.io events to live viewers. If you scale up and need the worker on separate infrastructure, move it out and add a Redis adapter to Socket.io so cross-process emits work.
-
-## Running Tests
-
-```bash
-npm run test --workspace=server
-```
-
-Unit tests cover the snake draft strategy logic (25 tests).
 
 ## License
 
