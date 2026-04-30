@@ -1,0 +1,87 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import { requireAuth, requireCommissioner } from '../../middleware/auth';
+import { validate } from '../../middleware/validate';
+import { submitPickSchema } from './draft.schema';
+import { prisma } from '../../db';
+import { AppError } from '../../middleware/errorHandler';
+import { io } from '../../index';
+import { DraftEngine } from '../../services/draft-engine/DraftEngine';
+
+export const draftRouter = Router();
+
+draftRouter.use(requireAuth);
+
+function getEngine() {
+  return new DraftEngine(prisma, io);
+}
+
+// Start draft
+draftRouter.post('/:id/draft/start', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const draft = await getEngine().startDraft(req.params.id, req.user!.sub);
+    res.json(draft);
+  } catch (err) { next(err); }
+});
+
+// Pause/resume
+draftRouter.post('/:id/draft/pause', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const action = req.query.action === 'resume' ? 'resume' : 'pause';
+    const engine = getEngine();
+    const draft = action === 'pause'
+      ? await engine.pauseDraft(req.params.id, req.user!.sub)
+      : await engine.resumeDraft(req.params.id, req.user!.sub);
+    res.json(draft);
+  } catch (err) { next(err); }
+});
+
+// Get draft state
+draftRouter.get('/:id/draft', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const draft = await prisma.draft.findUnique({ where: { leagueId: req.params.id } });
+    if (!draft) throw new AppError(404, 'Draft not found');
+    const state = await getEngine().getDraftState(draft.id);
+    res.json(state);
+  } catch (err) { next(err); }
+});
+
+// Get draft board (picks + order ahead)
+draftRouter.get('/:id/draft/board', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const draft = await prisma.draft.findUnique({ where: { leagueId: req.params.id } });
+    if (!draft) throw new AppError(404, 'Draft not found');
+    const state = await getEngine().getDraftState(draft.id);
+    res.json(state);
+  } catch (err) { next(err); }
+});
+
+// Submit a pick
+draftRouter.post('/:id/draft/picks', validate(submitPickSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const draft = await prisma.draft.findUnique({ where: { leagueId: req.params.id } });
+    if (!draft) throw new AppError(404, 'Draft not found');
+
+    // Verify the requesting user belongs to this draft as the current member
+    const member = await prisma.leagueMember.findFirst({
+      where: { leagueId: req.params.id, userId: req.user!.sub },
+    });
+    if (!member) throw new AppError(403, 'You are not a member of this league');
+
+    const state = await getEngine().submitPick(draft.id, member.id, req.body.itemId);
+    res.json(state);
+  } catch (err) { next(err); }
+});
+
+// List picks
+draftRouter.get('/:id/draft/picks', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const draft = await prisma.draft.findUnique({ where: { leagueId: req.params.id } });
+    if (!draft) throw new AppError(404, 'Draft not found');
+    const picks = await prisma.pick.findMany({
+      where: { draftId: draft.id },
+      include: { item: true, member: true },
+      orderBy: { pickNumber: 'asc' },
+    });
+    res.json(picks);
+  } catch (err) { next(err); }
+});

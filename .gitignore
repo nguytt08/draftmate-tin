@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.local
+
+# Prisma
+server/prisma/migrations/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / AI tools
+.vscode/
+.idea/
+.claude/
+
+# Coverage
+coverage/
+
+# Personal notes
+PERSONAL_PLAN.md

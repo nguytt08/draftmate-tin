@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USERS ────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  displayName  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens RefreshToken[]
+  memberships   LeagueMember[]
+  picks         Pick[]
+  leagues       League[]       @relation("CommissionerLeagues")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
+}
+
+// ─── LEAGUES ──────────────────────────────────────────────────────────────────
+
+model League {
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
+  commissionerId String
+  commissioner   User     @relation("CommissionerLeagues", fields: [commissionerId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  settings DraftSettings?
+  members  LeagueMember[]
+  items    DraftItem[]
+  draft    Draft?
+}
+
+model DraftSettings {
+  id       String @id @default(uuid())
+  leagueId String @unique
+  league   League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  format           DraftFormat      @default(SNAKE)
+  totalRounds      Int
+  pickTimerSeconds Int              @default(43200)
+  autoPick         AutoPickBehavior @default(RANDOM)
+  allowTrading     Boolean          @default(false)
+  extendedConfig   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum DraftFormat {
+  SNAKE
+  LINEAR
+  AUCTION
+}
+
+enum AutoPickBehavior {
+  RANDOM
+  SKIP
+  BEST_RANKED
+}
+
+// ─── LEAGUE MEMBERS ───────────────────────────────────────────────────────────
+
+model LeagueMember {
+  id       String @id @default(uuid())
+  leagueId String
+  league   League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  userId   String?
+  user     User?  @relation(fields: [userId], references: [id])
+
+  inviteEmail   String
+  inviteToken   String?      @unique
+  inviteStatus  InviteStatus @default(PENDING)
+  draftPosition Int?
+  notifyEmail   Boolean      @default(true)
+  notifyPhone   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  picks       Pick[]
+  itemNotes   MemberItemNote[]
+
+  @@unique([leagueId, userId])
+  @@unique([leagueId, draftPosition])
+  @@index([leagueId])
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+// ─── DRAFT ITEMS ──────────────────────────────────────────────────────────────
+
+model DraftItem {
+  id                String   @id @default(uuid())
+  leagueId          String
+  league            League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  name              String
+  metadata          Json?
+  commissionerNotes String?
+  isAvailable       Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  pick        Pick?
+  memberNotes MemberItemNote[]
+
+  @@index([leagueId, isAvailable])
+}
+
+// ─── MEMBER ITEM NOTES ────────────────────────────────────────────────────────
+
+model MemberItemNote {
+  id       String @id @default(uuid())
+  memberId String
+  member   LeagueMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  itemId   String
+  item     DraftItem    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  note     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([memberId, itemId])
+  @@index([memberId])
+}
+
+// ─── DRAFT ────────────────────────────────────────────────────────────────────
+
+model Draft {
+  id              String      @id @default(uuid())
+  leagueId        String      @unique
+  league          League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  status          DraftStatus @default(PENDING)
+  currentPickNumber Int       @default(1)
+  currentRound    Int         @default(1)
+  currentMemberId String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  picks     Pick[]
+  timerJobs PickTimerJob[]
+}
+
+enum DraftStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+// ─── PICKS ────────────────────────────────────────────────────────────────────
+
+model Pick {
+  id       String @id @default(uuid())
+  draftId  String
+  draft    Draft  @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  memberId String
+  member   LeagueMember @relation(fields: [memberId], references: [id])
+  userId   String?
+  user     User?  @relation(fields: [userId], references: [id])
+  itemId   String @unique
+  item     DraftItem @relation(fields: [itemId], references: [id])
+
+  pickNumber      Int
+  round           Int
+  positionInRound Int
+  isAutoPick      Boolean  @default(false)
+  pickedAt        DateTime @default(now())
+
+  @@unique([draftId, pickNumber])
+  @@index([draftId])
+}
+
+// ─── TIMER JOBS ───────────────────────────────────────────────────────────────
+
+model PickTimerJob {
+  id           String         @id @default(uuid())
+  draftId      String
+  draft        Draft          @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  bullJobId    String         @unique
+  pickNumber   Int
+  scheduledFor DateTime
+  status       TimerJobStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+
+  @@unique([draftId, pickNumber])
+  @@index([draftId])
+}
+
+enum TimerJobStatus {
+  ACTIVE
+  CANCELLED
+  FIRED
+}
