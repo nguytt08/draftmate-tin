@@ -1,12 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { draftSocket } from '../socket/socket';
 import { useAuthStore } from '../store/authStore';
-import { formatDistanceToNow } from 'date-fns';
 
-interface DraftItem { id: string; name: string; isAvailable: boolean; metadata?: Record<string, unknown>; commissionerNotes?: string | null }
+interface DraftItem { id: string; name: string; bucket?: string | null; isAvailable: boolean; metadata?: Record<string, unknown>; commissionerNotes?: string | null }
 interface Member { id: string; inviteEmail: string; draftPosition: number; userId?: string; user?: { displayName: string } }
 interface Pick { id: string; pickNumber: number; round: number; positionInRound: number; memberId: string; itemId: string; isAutoPick: boolean; item: DraftItem; member: Member }
 interface DraftState {
@@ -14,14 +13,13 @@ interface DraftState {
   picks: Pick[];
   availableItems: DraftItem[];
   members: Member[];
-  settings: { totalRounds: number; pickTimerSeconds: number; format: string } | null;
+  settings: { totalRounds: number; pickTimerSeconds: number; format: string; enforceBucketPicking?: boolean } | null;
 }
 
 export default function DraftRoom() {
   const { draftId } = useParams<{ draftId: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const qc = useQueryClient();
   const [localState, setLocalState] = useState<DraftState | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +41,11 @@ export default function DraftRoom() {
     const { data } = await api.get(`/leagues/${leagueId}/draft`);
     setLocalState(data);
   }, [leagueId]);
+
+  // Initial state fetch once leagueId resolves (fallback if socket is slow)
+  useEffect(() => {
+    if (leagueId) fetchState();
+  }, [leagueId, fetchState]);
 
   // Connect socket
   useEffect(() => {
@@ -116,6 +119,25 @@ export default function DraftRoom() {
     i.name.toLowerCase().includes(filter.toLowerCase()),
   );
 
+  // Bucket logic
+  const enforceBuckets = settings?.enforceBucketPicking ?? false;
+  const myPicks = picks.filter((p) => p.memberId === myMember?.id);
+  const myUsedBuckets = new Set(myPicks.map((p) => p.item.bucket).filter(Boolean) as string[]);
+  const namedBuckets = [...new Set(availableItems.map((i) => i.bucket).filter(Boolean) as string[])].sort();
+  const hasBuckets = namedBuckets.length > 0;
+
+  function isBucketBlocked(bucket: string | null | undefined) {
+    return enforceBuckets && isMyTurn && !!bucket && myUsedBuckets.has(bucket);
+  }
+
+  // Group filtered items by bucket for display
+  const groupedItems = hasBuckets
+    ? namedBuckets.reduce<Record<string, DraftItem[]>>((acc, b) => {
+        acc[b] = filteredItems.filter((i) => i.bucket === b);
+        return acc;
+      }, { '': filteredItems.filter((i) => !i.bucket) })
+    : null;
+
   // Build pick grid per round per member
   const pickGrid: Record<number, Record<string, Pick | null>> = {};
   for (let r = 1; r <= (settings?.totalRounds ?? 0); r++) {
@@ -159,35 +181,87 @@ export default function DraftRoom() {
         {draft.status === 'ACTIVE' && (
           <section style={styles.panel}>
             <h2 style={styles.panelTitle}>Available ({availableItems.length})</h2>
+
+            {/* Bucket status bar */}
+            {hasBuckets && isMyTurn && enforceBuckets && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                {namedBuckets.map((b) => (
+                  <span key={b} style={{
+                    padding: '2px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+                    background: myUsedBuckets.has(b) ? '#f3f4f6' : '#dcfce7',
+                    color: myUsedBuckets.has(b) ? '#9ca3af' : '#15803d',
+                    textDecoration: myUsedBuckets.has(b) ? 'line-through' : 'none',
+                  }}>
+                    {b} {myUsedBuckets.has(b) ? '✓' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+
             <input
               style={{ ...styles.input, marginBottom: 8, width: '100%' }}
               placeholder="Search items..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
-            <ul style={styles.itemList}>
-              {filteredItems.map((item) => (
-                <li key={item.id} style={styles.itemRow}>
-                  <span style={{ flex: 1 }}>{item.name}</span>
-                  <button
-                    style={styles.notesBtn}
-                    title="View / add notes"
-                    onClick={() => setNotesItem(item)}
-                  >
-                    +
-                  </button>
-                  {isMyTurn && (
-                    <button
-                      style={styles.pickBtn}
-                      disabled={submitting}
-                      onClick={() => submitPick(item.id)}
-                    >
-                      Pick
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
+
+            {hasBuckets && groupedItems ? (
+              <div style={{ overflowY: 'auto', maxHeight: 480 }}>
+                {namedBuckets.map((bucket) => {
+                  const blocked = isBucketBlocked(bucket);
+                  const bucketItems = groupedItems[bucket] ?? [];
+                  if (bucketItems.length === 0) return null;
+                  return (
+                    <div key={bucket} style={{ marginBottom: 12, opacity: blocked ? 0.45 : 1 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                        {bucket} {blocked ? '(already picked)' : `(${bucketItems.length})`}
+                      </div>
+                      <ul style={{ ...styles.itemList, margin: 0 }}>
+                        {bucketItems.map((item) => (
+                          <li key={item.id} style={styles.itemRow}>
+                            <span style={{ flex: 1 }}>{item.name}</span>
+                            <button style={styles.notesBtn} title="View / add notes" onClick={() => setNotesItem(item)}>+</button>
+                            {isMyTurn && (
+                              <button style={styles.pickBtn} disabled={submitting || blocked} onClick={() => submitPick(item.id)}>Pick</button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+                {(groupedItems[''] ?? []).length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                      Other ({groupedItems[''].length})
+                    </div>
+                    <ul style={{ ...styles.itemList, margin: 0 }}>
+                      {groupedItems[''].map((item) => (
+                        <li key={item.id} style={styles.itemRow}>
+                          <span style={{ flex: 1 }}>{item.name}</span>
+                          <button style={styles.notesBtn} title="View / add notes" onClick={() => setNotesItem(item)}>+</button>
+                          {isMyTurn && (
+                            <button style={styles.pickBtn} disabled={submitting} onClick={() => submitPick(item.id)}>Pick</button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <ul style={styles.itemList}>
+                {filteredItems.map((item) => (
+                  <li key={item.id} style={styles.itemRow}>
+                    <span style={{ flex: 1 }}>{item.name}</span>
+                    <button style={styles.notesBtn} title="View / add notes" onClick={() => setNotesItem(item)}>+</button>
+                    {isMyTurn && (
+                      <button style={styles.pickBtn} disabled={submitting} onClick={() => submitPick(item.id)}>Pick</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
 

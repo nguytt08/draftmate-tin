@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const createItemSchema = z.object({
   name: z.string().min(1).max(200),
+  bucket: z.string().max(50).optional(),
   metadata: z.record(z.unknown()).optional(),
   commissionerNotes: z.string().max(1000).optional(),
 });

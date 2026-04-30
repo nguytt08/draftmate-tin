@@ -30,6 +30,14 @@ export async function createLeague(commissionerId: string, input: CreateLeagueIn
           notifyEmail: true,
         },
       },
+      settings: {
+        create: {
+          format: 'SNAKE',
+          totalRounds: 15,
+          pickTimerSeconds: 43200,
+          autoPick: 'RANDOM',
+        },
+      },
     },
     include: { members: true },
   });
@@ -56,7 +64,12 @@ export async function getLeague(leagueId: string) {
 export async function listLeagues(userId: string) {
   return prisma.league.findMany({
     where: { members: { some: { userId } } },
-    include: { settings: true, _count: { select: { members: true, items: true } } },
+    include: {
+      settings: true,
+      draft: true,
+      members: { where: { userId }, select: { id: true } },
+      _count: { select: { members: true, items: true } },
+    },
     orderBy: { createdAt: 'desc' },
   });
 }
@@ -72,6 +85,7 @@ export async function upsertSettings(leagueId: string, input: DraftSettingsInput
     pickTimerSeconds: input.pickTimerSeconds,
     autoPick: input.autoPick,
     allowTrading: input.allowTrading,
+    enforceBucketPicking: input.enforceBucketPicking,
     extendedConfig: input.extendedConfig as Prisma.InputJsonValue | undefined,
   };
   return prisma.draftSettings.upsert({

@@ -58,12 +58,13 @@ model DraftSettings {
   leagueId String @unique
   league   League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
 
-  format           DraftFormat      @default(SNAKE)
-  totalRounds      Int
-  pickTimerSeconds Int              @default(43200)
-  autoPick         AutoPickBehavior @default(RANDOM)
-  allowTrading     Boolean          @default(false)
-  extendedConfig   Json?
+  format                DraftFormat      @default(SNAKE)
+  totalRounds           Int
+  pickTimerSeconds      Int              @default(43200)
+  autoPick              AutoPickBehavior @default(RANDOM)
+  allowTrading          Boolean          @default(false)
+  enforceBucketPicking  Boolean          @default(false)
+  extendedConfig        Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -121,6 +122,7 @@ model DraftItem {
   leagueId          String
   league            League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   name              String
+  bucket            String?
   metadata          Json?
   commissionerNotes String?
   isAvailable       Boolean  @default(true)

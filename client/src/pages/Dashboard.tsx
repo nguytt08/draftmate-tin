@@ -9,7 +9,8 @@ interface League {
   name: string;
   description?: string;
   commissionerId: string;
-  draft?: { id: string; status: string } | null;
+  draft?: { id: string; status: string; currentMemberId: string | null } | null;
+  members?: { id: string }[];
   _count?: { members: number; items: number };
 }
 
@@ -74,29 +75,47 @@ export default function Dashboard() {
         )}
 
         <div style={styles.grid}>
-          {leagues.map((league) => (
-            <div key={league.id} style={styles.leagueCard}>
-              <h3>{league.name}</h3>
-              <p style={{ color: '#666', fontSize: 14 }}>
-                {league._count?.members ?? 0} members · {league._count?.items ?? 0} items
-              </p>
-              {league.draft && (
-                <span style={{ ...styles.badge, ...(league.draft.status === 'ACTIVE' ? styles.badgeGreen : styles.badgeGray) }}>
-                  {league.draft.status}
-                </span>
-              )}
-              <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-                <button style={styles.primaryBtn} onClick={() => navigate(`/leagues/${league.id}/setup`)}>
-                  Manage
-                </button>
-                {league.draft && (
-                  <button style={styles.ghostBtn} onClick={() => navigate(`/draft/${league.draft!.id}`)}>
-                    Draft Room
-                  </button>
+          {leagues.map((league) => {
+            const isCommissioner = league.commissionerId === user?.id;
+            const myMemberId = league.members?.[0]?.id;
+            const draftActive = league.draft?.status === 'ACTIVE';
+            const draftPaused = league.draft?.status === 'PAUSED';
+            const isMyTurn = draftActive && myMemberId && league.draft?.currentMemberId === myMemberId;
+
+            return (
+              <div key={league.id} style={{ ...styles.leagueCard, ...(isMyTurn ? styles.leagueCardActive : {}) }}>
+                <h3 style={{ margin: '0 0 6px' }}>{league.name}</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <p style={{ color: '#666', fontSize: 14, margin: 0 }}>
+                    {league._count?.members ?? 0} members · {league._count?.items ?? 0} items
+                  </p>
+                  {league.draft && (
+                    <span style={{ ...styles.badge, ...(draftActive ? styles.badgeGreen : draftPaused ? styles.badgeYellow : styles.badgeGray) }}>
+                      {league.draft.status}
+                    </span>
+                  )}
+                </div>
+                {isMyTurn && (
+                  <p style={{ color: '#15803d', fontSize: 13, fontWeight: 600, margin: '6px 0 0' }}>Your turn to pick!</p>
                 )}
+                <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {(draftActive || draftPaused) ? (
+                    <button style={isMyTurn ? styles.turnBtn : styles.primaryBtn} onClick={() => navigate(`/draft/${league.draft!.id}`)}>
+                      {isMyTurn ? 'Pick Now →' : 'Go to Draft →'}
+                    </button>
+                  ) : null}
+                  {isCommissioner && (
+                    <button style={(draftActive || draftPaused) ? styles.ghostBtn : styles.primaryBtn} onClick={() => navigate(`/leagues/${league.id}/setup`)}>
+                      {draftActive || draftPaused ? 'Manage' : 'Set Up Draft'}
+                    </button>
+                  )}
+                  {!draftActive && !draftPaused && !isCommissioner && (
+                    <span style={{ fontSize: 13, color: '#9ca3af', alignSelf: 'center' }}>Waiting for commissioner to start</span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </main>
     </div>
@@ -116,7 +135,10 @@ const styles: Record<string, React.CSSProperties> = {
   primaryBtn: { padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 600, fontSize: 14 },
   ghostBtn: { padding: '8px 16px', background: 'transparent', color: '#2563eb', border: '1px solid #2563eb', borderRadius: 4, fontWeight: 600, fontSize: 14 },
   logoutBtn: { padding: '6px 12px', background: 'transparent', color: '#666', border: '1px solid #ccc', borderRadius: 4, fontSize: 14 },
-  badge: { display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600, marginTop: 4 },
+  badge: { display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 },
   badgeGreen: { background: '#dcfce7', color: '#15803d' },
+  badgeYellow: { background: '#fef9c3', color: '#854d0e' },
   badgeGray: { background: '#f3f4f6', color: '#6b7280' },
+  leagueCardActive: { borderLeft: '3px solid #16a34a' },
+  turnBtn: { padding: '8px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 700, fontSize: 14 },
 };

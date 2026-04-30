@@ -13,6 +13,7 @@ export const draftSettingsSchema = z.object({
   pickTimerSeconds: z.number().int().min(60).default(43200),
   autoPick: z.enum(['RANDOM', 'SKIP', 'BEST_RANKED']).default('RANDOM'),
   allowTrading: z.boolean().default(false),
+  enforceBucketPicking: z.boolean().default(false),
   extendedConfig: z.record(z.unknown()).optional(),
 });
 

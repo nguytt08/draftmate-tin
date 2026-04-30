@@ -11,7 +11,7 @@ type UpdateItemInput = z.infer<typeof updateItemSchema>;
 export async function listItems(leagueId: string, availableOnly = false) {
   return prisma.draftItem.findMany({
     where: { leagueId, ...(availableOnly ? { isAvailable: true } : {}) },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ bucket: 'asc' }, { createdAt: 'asc' }],
   });
 }
 
@@ -20,6 +20,7 @@ export async function createItem(leagueId: string, input: CreateItemInput) {
     data: {
       leagueId,
       name: input.name,
+      bucket: input.bucket,
       metadata: input.metadata as Prisma.InputJsonValue | undefined,
       commissionerNotes: input.commissionerNotes,
     },
@@ -31,11 +32,12 @@ export async function bulkCreateItems(leagueId: string, input: BulkCreateInput) 
     data: input.items.map((item) => ({
       leagueId,
       name: item.name,
+      bucket: item.bucket,
       metadata: item.metadata as Prisma.InputJsonValue | undefined,
       commissionerNotes: item.commissionerNotes,
     })),
   });
-  return prisma.draftItem.findMany({ where: { leagueId }, orderBy: { createdAt: 'asc' } });
+  return prisma.draftItem.findMany({ where: { leagueId }, orderBy: [{ bucket: 'asc' }, { createdAt: 'asc' }] });
 }
 
 export async function updateItem(leagueId: string, itemId: string, input: UpdateItemInput) {
@@ -45,6 +47,7 @@ export async function updateItem(leagueId: string, itemId: string, input: Update
     where: { id: itemId },
     data: {
       name: input.name,
+      bucket: input.bucket,
       metadata: input.metadata as Prisma.InputJsonValue | undefined,
       commissionerNotes: input.commissionerNotes,
     },

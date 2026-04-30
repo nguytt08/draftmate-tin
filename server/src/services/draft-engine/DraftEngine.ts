@@ -22,15 +22,28 @@ export class DraftEngine {
 
     if (!league) throw new AppError(404, 'League not found');
     if (league.commissionerId !== commissionerId) throw new AppError(403, 'Commissioner only');
-    if (!league.settings) throw new AppError(400, 'Draft settings not configured');
+    if (!league.settings) {
+      await this.prisma.draftSettings.create({
+        data: { leagueId, format: 'SNAKE', totalRounds: 15, pickTimerSeconds: 43200, autoPick: 'RANDOM' },
+      });
+      league.settings = await this.prisma.draftSettings.findUniqueOrThrow({ where: { leagueId } });
+    }
     if (league.draft?.status === 'ACTIVE') throw new AppError(409, 'Draft already active');
 
     const acceptedMembers = league.members.filter((m) => m.inviteStatus === 'ACCEPTED');
-    if (acceptedMembers.length < 2) throw new AppError(400, 'Need at least 2 accepted members');
+    if (acceptedMembers.length < 1) throw new AppError(400, 'Need at least 1 accepted member');
 
+    // Auto-assign positions if none are set yet (common for solo testing)
     const withPosition = acceptedMembers.filter((m) => m.draftPosition !== null);
-    if (withPosition.length !== acceptedMembers.length) {
-      throw new AppError(400, 'All members must have a draft position set');
+    if (withPosition.length === 0) {
+      await Promise.all(
+        acceptedMembers.map((m, i) =>
+          this.prisma.leagueMember.update({ where: { id: m.id }, data: { draftPosition: i + 1 } }),
+        ),
+      );
+      acceptedMembers.forEach((m, i) => { m.draftPosition = i + 1; });
+    } else if (withPosition.length !== acceptedMembers.length) {
+      throw new AppError(400, 'All members must have a draft position set — use Randomize Draft Order');
     }
 
     const totalPicks = league.settings.totalRounds * acceptedMembers.length;
@@ -94,8 +107,8 @@ export class DraftEngine {
         if (draft.currentMemberId !== memberId) throw new AppError(403, 'Not your turn');
 
         // Lock the item row
-        const items = await tx.$queryRaw<{ id: string; isAvailable: boolean; leagueId: string }[]>`
-          SELECT id, "isAvailable", "leagueId" FROM "DraftItem" WHERE id = ${itemId} FOR UPDATE
+        const items = await tx.$queryRaw<{ id: string; isAvailable: boolean; leagueId: string; bucket: string | null }[]>`
+          SELECT id, "isAvailable", "leagueId", bucket FROM "DraftItem" WHERE id = ${itemId} FOR UPDATE
         `;
         const item = items[0];
         if (!item || item.leagueId !== (await tx.league.findUniqueOrThrow({ where: { id: draft.leagueId } })).id) {
@@ -110,6 +123,16 @@ export class DraftEngine {
             members: { where: { inviteStatus: 'ACCEPTED' }, orderBy: { draftPosition: 'asc' } },
           },
         });
+
+        // Bucket picking enforcement
+        if (league.settings?.enforceBucketPicking && item.bucket) {
+          const existingBucketPick = await tx.pick.findFirst({
+            where: { draftId, memberId, item: { bucket: item.bucket } },
+          });
+          if (existingBucketPick) {
+            throw new AppError(409, `You already have a pick from the "${item.bucket}" bucket`);
+          }
+        }
 
         const settings = league.settings!;
         const members = league.members;
