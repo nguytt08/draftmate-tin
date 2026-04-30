@@ -40,6 +40,16 @@ itemRouter.delete('/:id/items/:itemId', requireCommissioner(), async (req: Reque
   } catch (err) { next(err); }
 });
 
+// Bulk fetch all personal notes for this league (must be before /:itemId routes)
+itemRouter.get('/:id/items/notes/mine', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { prisma } = await import('../../db');
+    const member = await prisma.leagueMember.findFirst({ where: { leagueId: req.params.id, userId: req.user!.sub } });
+    if (!member) { res.status(403).json({ error: 'Not a member of this league' }); return; }
+    res.json(await itemService.getAllMyNotes(req.params.id, member.id));
+  } catch (err) { next(err); }
+});
+
 // Notes — any league member can read/write their own note; commissioner notes come along for the ride
 itemRouter.get('/:id/items/:itemId/notes', async (req: Request, res: Response, next: NextFunction) => {
   try {

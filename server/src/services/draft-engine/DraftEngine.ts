@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { AppError } from '../../middleware/errorHandler';
 import { createDraftStrategy } from './DraftStrategyFactory';
 import type { Server as SocketServer } from 'socket.io';
@@ -24,14 +24,14 @@ export class DraftEngine {
     if (league.commissionerId !== commissionerId) throw new AppError(403, 'Commissioner only');
     if (!league.settings) {
       await this.prisma.draftSettings.create({
-        data: { leagueId, format: 'SNAKE', totalRounds: 15, pickTimerSeconds: 43200, autoPick: 'RANDOM' },
+        data: { leagueId, format: 'SNAKE', totalRounds: 3, pickTimerSeconds: 7200, autoPick: 'RANDOM' },
       });
       league.settings = await this.prisma.draftSettings.findUniqueOrThrow({ where: { leagueId } });
     }
     if (league.draft?.status === 'ACTIVE') throw new AppError(409, 'Draft already active');
 
-    const acceptedMembers = league.members.filter((m) => m.inviteStatus === 'ACCEPTED');
-    if (acceptedMembers.length < 1) throw new AppError(400, 'Need at least 1 accepted member');
+    const acceptedMembers = league.members.filter((m) => m.inviteStatus !== 'DECLINED');
+    if (acceptedMembers.length < 1) throw new AppError(400, 'Need at least 1 member (pending or accepted)');
 
     // Auto-assign positions if none are set yet (common for solo testing)
     const withPosition = acceptedMembers.filter((m) => m.draftPosition !== null);
@@ -93,106 +93,123 @@ export class DraftEngine {
   }
 
   async submitPick(draftId: string, memberId: string, itemId: string) {
-    // Fetch draft with settings & members inside a serializable transaction
-    const result = await this.prisma.$transaction(
-      async (tx) => {
-        // Lock draft row
-        const drafts = await tx.$queryRaw<{ id: string; currentPickNumber: number; currentMemberId: string; status: string; leagueId: string }[]>`
-          SELECT id, "currentPickNumber", "currentMemberId", status, "leagueId"
-          FROM "Draft" WHERE id = ${draftId} FOR UPDATE
-        `;
-        const draft = drafts[0];
-        if (!draft) throw new AppError(404, 'Draft not found');
-        if (draft.status !== 'ACTIVE') throw new AppError(409, 'Draft is not active');
-        if (draft.currentMemberId !== memberId) throw new AppError(403, 'Not your turn');
+    let result: {
+      pick: { id: string; pickNumber: number; [key: string]: unknown };
+      complete: boolean;
+      nextMemberId: string | null;
+      nextPickNumber: number;
+      settings: { pickTimerSeconds: number; [key: string]: unknown };
+      league: { id: string; [key: string]: unknown };
+    };
 
-        // Lock the item row
-        const items = await tx.$queryRaw<{ id: string; isAvailable: boolean; leagueId: string; bucket: string | null }[]>`
-          SELECT id, "isAvailable", "leagueId", bucket FROM "DraftItem" WHERE id = ${itemId} FOR UPDATE
-        `;
-        const item = items[0];
-        if (!item || item.leagueId !== (await tx.league.findUniqueOrThrow({ where: { id: draft.leagueId } })).id) {
-          throw new AppError(404, 'Item not found');
-        }
-        if (!item.isAvailable) throw new AppError(409, 'ITEM_ALREADY_PICKED');
+    try {
+      result = await this.prisma.$transaction(
+        async (tx) => {
+          // Lock draft row
+          const drafts = await tx.$queryRaw<{ id: string; currentPickNumber: number; currentMemberId: string; status: string; leagueId: string }[]>`
+            SELECT id, "currentPickNumber", "currentMemberId", status, "leagueId"
+            FROM "Draft" WHERE id = ${draftId} FOR UPDATE
+          `;
+          const draft = drafts[0];
+          if (!draft) throw new AppError(404, 'Draft not found');
+          if (draft.status !== 'ACTIVE') throw new AppError(409, 'Draft is not active');
+          if (draft.currentMemberId !== memberId) throw new AppError(403, 'Not your turn');
 
-        const league = await tx.league.findUniqueOrThrow({
-          where: { id: draft.leagueId },
-          include: {
-            settings: true,
-            members: { where: { inviteStatus: 'ACCEPTED' }, orderBy: { draftPosition: 'asc' } },
-          },
-        });
-
-        // Bucket picking enforcement
-        if (league.settings?.enforceBucketPicking && item.bucket) {
-          const existingBucketPick = await tx.pick.findFirst({
-            where: { draftId, memberId, item: { bucket: item.bucket } },
-          });
-          if (existingBucketPick) {
-            throw new AppError(409, `You already have a pick from the "${item.bucket}" bucket`);
+          // Lock the item row
+          const items = await tx.$queryRaw<{ id: string; isAvailable: boolean; leagueId: string; bucket: string | null }[]>`
+            SELECT id, "isAvailable", "leagueId", bucket FROM "DraftItem" WHERE id = ${itemId} FOR UPDATE
+          `;
+          const item = items[0];
+          if (!item || item.leagueId !== (await tx.league.findUniqueOrThrow({ where: { id: draft.leagueId } })).id) {
+            throw new AppError(404, 'Item not found');
           }
-        }
+          if (!item.isAvailable) throw new AppError(409, 'ITEM_ALREADY_PICKED');
 
-        const settings = league.settings!;
-        const members = league.members;
-        const strategy = createDraftStrategy(settings.format);
-        const currentPickNumber = draft.currentPickNumber;
+          const league = await tx.league.findUniqueOrThrow({
+            where: { id: draft.leagueId },
+            include: {
+              settings: true,
+              members: { where: { inviteStatus: { not: 'DECLINED' } }, orderBy: { draftPosition: 'asc' } },
+            },
+          });
 
-        const memberRecord = await tx.leagueMember.findUniqueOrThrow({ where: { id: memberId } });
+          // Bucket picking enforcement
+          if ((league.settings as { enforceBucketPicking?: boolean } | null)?.enforceBucketPicking && item.bucket) {
+            const existingBucketPick = await tx.pick.findFirst({
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              where: { draftId, memberId, item: { is: { bucket: item.bucket } } } as any,
+            });
+            if (existingBucketPick) {
+              throw new AppError(409, `You already have a pick from the "${item.bucket}" bucket`);
+            }
+          }
 
-        // Record the pick
-        const pick = await tx.pick.create({
-          data: {
-            draftId,
-            memberId,
-            userId: memberRecord.userId,
-            itemId,
-            pickNumber: currentPickNumber,
-            round: strategy.getRoundForPick(currentPickNumber, members.length),
-            positionInRound: strategy.getPositionInRound(currentPickNumber, members.length),
-            isAutoPick: false,
-          },
-        });
+          const settings = league.settings!;
+          const members = league.members;
+          const strategy = createDraftStrategy(settings.format);
+          const currentPickNumber = draft.currentPickNumber;
 
-        // Mark item as picked
-        await tx.draftItem.update({ where: { id: itemId }, data: { isAvailable: false } });
+          const memberRecord = await tx.leagueMember.findUniqueOrThrow({ where: { id: memberId } });
 
-        const nextPickNumber = currentPickNumber + 1;
-        const complete = strategy.isComplete(nextPickNumber, settings.totalRounds, members.length);
+          // Record the pick
+          const pick = await tx.pick.create({
+            data: {
+              draftId,
+              memberId,
+              userId: memberRecord.userId,
+              itemId,
+              pickNumber: currentPickNumber,
+              round: strategy.getRoundForPick(currentPickNumber, members.length),
+              positionInRound: strategy.getPositionInRound(currentPickNumber, members.length),
+              isAutoPick: false,
+            },
+          });
 
-        let nextMemberId: string | null = null;
-        if (!complete) {
-          const nextMemberIndex = strategy.getMemberIndexForPick(nextPickNumber, members.length);
-          nextMemberId = members[nextMemberIndex].id;
-        }
+          // Mark item as picked
+          await tx.draftItem.update({ where: { id: itemId }, data: { isAvailable: false } });
 
-        // Advance draft state
-        await tx.draft.update({
-          where: { id: draftId },
-          data: {
-            currentPickNumber: nextPickNumber,
-            currentRound: strategy.getRoundForPick(nextPickNumber, members.length),
-            currentMemberId: nextMemberId,
-            status: complete ? 'COMPLETED' : 'ACTIVE',
-            completedAt: complete ? new Date() : null,
-          },
-        });
+          const nextPickNumber = currentPickNumber + 1;
+          const complete = strategy.isComplete(nextPickNumber, settings.totalRounds, members.length);
 
-        return { pick, complete, nextMemberId, nextPickNumber, settings, league };
-      },
-      { isolationLevel: 'Serializable' as const },
-    );
+          let nextMemberId: string | null = null;
+          if (!complete) {
+            const nextMemberIndex = strategy.getMemberIndexForPick(nextPickNumber, members.length);
+            nextMemberId = members[nextMemberIndex].id;
+          }
+
+          // Advance draft state
+          await tx.draft.update({
+            where: { id: draftId },
+            data: {
+              currentPickNumber: nextPickNumber,
+              currentRound: strategy.getRoundForPick(nextPickNumber, members.length),
+              currentMemberId: nextMemberId,
+              status: complete ? 'COMPLETED' : 'ACTIVE',
+              completedAt: complete ? new Date() : null,
+            },
+          });
+
+          return { pick, complete, nextMemberId, nextPickNumber, settings, league };
+        },
+        { isolationLevel: 'Serializable' as const },
+      );
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        // Timer auto-picked this slot before the manual pick arrived — board has advanced
+        throw new AppError(409, 'This pick was already auto-selected — the board has advanced. Please refresh.');
+      }
+      throw err;
+    }
 
     // Cancel current timer
     const { timerService } = await import('../timer/timer.service');
-    await timerService.cancelPickTimer(draftId, result.pick.pickNumber);
+    await timerService.cancelPickTimer(draftId, result.pick.pickNumber as number);
 
     // Emit events
     const state = await this.getDraftState(draftId);
     const timerEndsAt = result.complete
       ? null
-      : new Date(Date.now() + result.settings.pickTimerSeconds * 1000);
+      : new Date(Date.now() + (result.settings.pickTimerSeconds as number) * 1000);
 
     this.io.to(`draft:${draftId}`).emit('draft:pick_made', {
       pick: result.pick,
@@ -205,15 +222,13 @@ export class DraftEngine {
     if (result.complete) {
       this.io.to(`draft:${draftId}`).emit('draft:completed', { completedAt: new Date().toISOString() });
     } else {
-      // Schedule next timer
-      await timerService.schedulePickTimer(draftId, result.nextPickNumber, result.settings.pickTimerSeconds);
+      await timerService.schedulePickTimer(draftId, result.nextPickNumber, result.settings.pickTimerSeconds as number);
 
-      // Notify next member
       if (result.nextMemberId) {
         const { notificationService } = await import('../notification/notification.service');
         await notificationService.notifyYourTurn(
-          result.nextMemberId,
-          result.league,
+          result.nextMemberId as string,
+          result.league as Parameters<typeof notificationService.notifyYourTurn>[1],
           state.draft,
           result.nextPickNumber,
           timerEndsAt!,
@@ -267,11 +282,21 @@ export class DraftEngine {
     const draft = await this.prisma.draft.findUniqueOrThrow({
       where: { id: draftId },
       include: {
-        picks: { include: { item: true, member: true }, orderBy: { pickNumber: 'asc' } },
+        picks: {
+          include: {
+            item: true,
+            member: { include: { user: { select: { displayName: true } } } },
+          },
+          orderBy: { pickNumber: 'asc' },
+        },
         league: {
           include: {
             settings: true,
-            members: { where: { inviteStatus: 'ACCEPTED' }, orderBy: { draftPosition: 'asc' } },
+            members: {
+              where: { inviteStatus: { not: 'DECLINED' } },
+              orderBy: { draftPosition: 'asc' },
+              include: { user: { select: { displayName: true } } },
+            },
             items: { where: { isAvailable: true }, orderBy: { name: 'asc' } },
           },
         },

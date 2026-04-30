@@ -97,7 +97,8 @@ export async function refresh(rawToken: string) {
   ]);
 
   const accessToken = generateAccessToken(record.userId, record.user.email, record.user.displayName);
-  return { accessToken, refreshToken: rawNewRefresh };
+  const user = { id: record.userId, email: record.user.email, displayName: record.user.displayName };
+  return { accessToken, refreshToken: rawNewRefresh, user };
 }
 
 export async function logout(rawToken: string) {

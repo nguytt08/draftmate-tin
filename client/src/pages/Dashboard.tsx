@@ -80,6 +80,7 @@ export default function Dashboard() {
             const myMemberId = league.members?.[0]?.id;
             const draftActive = league.draft?.status === 'ACTIVE';
             const draftPaused = league.draft?.status === 'PAUSED';
+            const draftComplete = league.draft?.status === 'COMPLETED';
             const isMyTurn = draftActive && myMemberId && league.draft?.currentMemberId === myMemberId;
 
             return (
@@ -99,17 +100,22 @@ export default function Dashboard() {
                   <p style={{ color: '#15803d', fontSize: 13, fontWeight: 600, margin: '6px 0 0' }}>Your turn to pick!</p>
                 )}
                 <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {(draftActive || draftPaused) ? (
+                  {(draftActive || draftPaused) && (
                     <button style={isMyTurn ? styles.turnBtn : styles.primaryBtn} onClick={() => navigate(`/draft/${league.draft!.id}`)}>
                       {isMyTurn ? 'Pick Now →' : 'Go to Draft →'}
                     </button>
-                  ) : null}
-                  {isCommissioner && (
-                    <button style={(draftActive || draftPaused) ? styles.ghostBtn : styles.primaryBtn} onClick={() => navigate(`/leagues/${league.id}/setup`)}>
-                      {draftActive || draftPaused ? 'Manage' : 'Set Up Draft'}
+                  )}
+                  {draftComplete && (
+                    <button style={styles.primaryBtn} onClick={() => navigate(`/draft/${league.draft!.id}`)}>
+                      View Results →
                     </button>
                   )}
-                  {!draftActive && !draftPaused && !isCommissioner && (
+                  {isCommissioner && (
+                    <button style={(draftActive || draftPaused || draftComplete) ? styles.ghostBtn : styles.primaryBtn} onClick={() => navigate(`/leagues/${league.id}/setup`)}>
+                      {(draftActive || draftPaused || draftComplete) ? 'Manage' : 'Set Up Draft'}
+                    </button>
+                  )}
+                  {!draftActive && !draftPaused && !draftComplete && !isCommissioner && (
                     <span style={{ fontSize: 13, color: '#9ca3af', alignSelf: 'center' }}>Waiting for commissioner to start</span>
                   )}
                 </div>

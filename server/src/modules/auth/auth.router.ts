@@ -42,9 +42,9 @@ authRouter.post('/refresh', async (req: Request, res: Response, next: NextFuncti
       res.status(401).json({ error: 'No refresh token' });
       return;
     }
-    const { accessToken, refreshToken } = await authService.refresh(raw);
+    const { accessToken, refreshToken, user } = await authService.refresh(raw);
     res.cookie(COOKIE_NAME, refreshToken, cookieOptions);
-    res.json({ accessToken });
+    res.json({ accessToken, user });
   } catch (err) {
     next(err);
   }

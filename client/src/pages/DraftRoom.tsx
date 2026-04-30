@@ -6,7 +6,11 @@ import { draftSocket } from '../socket/socket';
 import { useAuthStore } from '../store/authStore';
 
 interface DraftItem { id: string; name: string; bucket?: string | null; isAvailable: boolean; metadata?: Record<string, unknown>; commissionerNotes?: string | null }
-interface Member { id: string; inviteEmail: string; draftPosition: number; userId?: string; user?: { displayName: string } }
+interface Member { id: string; inviteEmail: string; displayName?: string | null; draftPosition: number; userId?: string; user?: { displayName: string } }
+
+function memberDisplay(m: { user?: { displayName: string } | null; displayName?: string | null; inviteEmail: string }): string {
+  return m.user?.displayName ?? m.displayName ?? m.inviteEmail.split('@')[0];
+}
 interface Pick { id: string; pickNumber: number; round: number; positionInRound: number; memberId: string; itemId: string; isAutoPick: boolean; item: DraftItem; member: Member }
 interface DraftState {
   draft: { id: string; status: string; currentPickNumber: number; currentRound: number; currentMemberId: string | null; timerEndsAt: string | null; completedAt: string | null };
@@ -25,16 +29,21 @@ export default function DraftRoom() {
   const [submitting, setSubmitting] = useState(false);
   const [filter, setFilter] = useState('');
   const [timerDisplay, setTimerDisplay] = useState('');
-  const [notesItem, setNotesItem] = useState<DraftItem | null>(null);
+  const [showNotes, setShowNotes] = useState(() => localStorage.getItem('draftroom:showNotes') !== 'false');
+  const [myNotes, setMyNotes] = useState<Record<string, string>>({});
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
 
-  const { data: leagueId } = useQuery<string>({
+  const { data: leagueMeta } = useQuery<{ id: string; commissionerId: string } | null>({
     queryKey: ['draft-league', draftId],
     queryFn: async () => {
       const { data } = await api.get(`/leagues`);
       const league = data.find((l: { draft?: { id: string } }) => l.draft?.id === draftId);
-      return league?.id ?? null;
+      return league ? { id: league.id, commissionerId: league.commissionerId } : null;
     },
   });
+  const leagueId = leagueMeta?.id;
+  const isCommissioner = user?.id === leagueMeta?.commissionerId;
 
   const fetchState = useCallback(async () => {
     if (!leagueId) return;
@@ -46,6 +55,14 @@ export default function DraftRoom() {
   useEffect(() => {
     if (leagueId) fetchState();
   }, [leagueId, fetchState]);
+
+  // Fetch all personal notes on load
+  useEffect(() => {
+    if (!leagueId || !user) return;
+    api.get(`/leagues/${leagueId}/items/notes/mine`)
+      .then(({ data }) => setMyNotes(data))
+      .catch(() => {});
+  }, [leagueId, user]);
 
   // Connect socket
   useEffect(() => {
@@ -104,13 +121,39 @@ export default function DraftRoom() {
     }
   }
 
+  async function resetDraft() {
+    if (!leagueId) return;
+    if (!window.confirm('Reset the draft? All picks will be deleted and the draft restarts from pick 1.')) return;
+    try {
+      await api.post(`/leagues/${leagueId}/draft/reset`);
+      await fetchState();
+    } catch (err: unknown) {
+      alert((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Reset failed');
+    }
+  }
+
+  function toggleNotes() {
+    setShowNotes((v) => {
+      const next = !v;
+      localStorage.setItem('draftroom:showNotes', String(next));
+      return next;
+    });
+  }
+
+  async function saveNote(itemId: string) {
+    const note = editingText.trim();
+    setMyNotes((prev) => ({ ...prev, [itemId]: note }));
+    setEditingNoteId(null);
+    if (!leagueId) return;
+    await api.put(`/leagues/${leagueId}/items/${itemId}/notes/mine`, { note });
+  }
+
   if (!localState) {
     return <div style={styles.loading}>Loading draft...</div>;
   }
 
   const { draft, picks, availableItems, members, settings } = localState;
 
-  // Find the member record for the current user
   const myMember = members.find((m) => m.userId === user?.id);
   const isMyTurn = draft.currentMemberId === myMember?.id;
   const currentMember = members.find((m) => m.id === draft.currentMemberId);
@@ -119,7 +162,6 @@ export default function DraftRoom() {
     i.name.toLowerCase().includes(filter.toLowerCase()),
   );
 
-  // Bucket logic
   const enforceBuckets = settings?.enforceBucketPicking ?? false;
   const myPicks = picks.filter((p) => p.memberId === myMember?.id);
   const myUsedBuckets = new Set(myPicks.map((p) => p.item.bucket).filter(Boolean) as string[]);
@@ -130,7 +172,6 @@ export default function DraftRoom() {
     return enforceBuckets && isMyTurn && !!bucket && myUsedBuckets.has(bucket);
   }
 
-  // Group filtered items by bucket for display
   const groupedItems = hasBuckets
     ? namedBuckets.reduce<Record<string, DraftItem[]>>((acc, b) => {
         acc[b] = filteredItems.filter((i) => i.bucket === b);
@@ -138,7 +179,6 @@ export default function DraftRoom() {
       }, { '': filteredItems.filter((i) => !i.bucket) })
     : null;
 
-  // Build pick grid per round per member
   const pickGrid: Record<number, Record<string, Pick | null>> = {};
   for (let r = 1; r <= (settings?.totalRounds ?? 0); r++) {
     pickGrid[r] = {};
@@ -146,6 +186,48 @@ export default function DraftRoom() {
   }
   for (const p of picks) {
     if (pickGrid[p.round]) pickGrid[p.round][p.memberId] = p;
+  }
+
+  function renderItem(item: DraftItem, blocked = false) {
+    const commNote = item.commissionerNotes;
+    const myNote = myNotes[item.id] ?? '';
+    const isEditing = editingNoteId === item.id;
+
+    return (
+      <li key={item.id} style={styles.itemRow}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 14 }}>{item.name}</span>
+          {showNotes && (
+            <div>
+              {commNote && (
+                <div style={styles.commNote}>📋 {commNote}</div>
+              )}
+              {isEditing ? (
+                <textarea
+                  autoFocus
+                  style={styles.inlineTextarea}
+                  value={editingText}
+                  onChange={(e) => setEditingText(e.target.value)}
+                  onBlur={() => saveNote(item.id)}
+                  rows={2}
+                  placeholder="Your notes (private)..."
+                />
+              ) : (
+                <div
+                  style={myNote ? styles.myNote : styles.addNote}
+                  onClick={() => { setEditingNoteId(item.id); setEditingText(myNote); }}
+                >
+                  {myNote || '+ Add note'}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        {isMyTurn && (
+          <button style={styles.pickBtn} disabled={submitting || blocked} onClick={() => submitPick(item.id)}>Pick</button>
+        )}
+      </li>
+    );
   }
 
   return (
@@ -161,6 +243,14 @@ export default function DraftRoom() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ fontSize: 13, color: '#888' }}>{onlineUsers.length} online</span>
           {draft.timerEndsAt && <span style={{ fontWeight: 700, color: isMyTurn ? '#dc2626' : '#555' }}>{timerDisplay}</span>}
+          <button onClick={toggleNotes} style={{ padding: '4px 10px', fontSize: 12, background: 'none', border: '1px solid #93c5fd', color: '#93c5fd', borderRadius: 4, cursor: 'pointer' }}>
+            {showNotes ? '📝 Hide Notes' : '📝 Show Notes'}
+          </button>
+          {isCommissioner && (
+            <button onClick={resetDraft} style={{ padding: '4px 10px', fontSize: 12, background: 'none', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4, cursor: 'pointer' }}>
+              Reset Draft
+            </button>
+          )}
         </div>
       </header>
 
@@ -172,7 +262,7 @@ export default function DraftRoom() {
       )}
       {!isMyTurn && draft.status === 'ACTIVE' && currentMember && (
         <div style={styles.waitingBanner}>
-          Waiting for <strong>{currentMember.user?.displayName ?? currentMember.inviteEmail}</strong>...
+          Waiting for <strong>{memberDisplay(currentMember)}</strong>...
         </div>
       )}
 
@@ -182,7 +272,6 @@ export default function DraftRoom() {
           <section style={styles.panel}>
             <h2 style={styles.panelTitle}>Available ({availableItems.length})</h2>
 
-            {/* Bucket status bar */}
             {hasBuckets && isMyTurn && enforceBuckets && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
                 {namedBuckets.map((b) => (
@@ -217,15 +306,7 @@ export default function DraftRoom() {
                         {bucket} {blocked ? '(already picked)' : `(${bucketItems.length})`}
                       </div>
                       <ul style={{ ...styles.itemList, margin: 0 }}>
-                        {bucketItems.map((item) => (
-                          <li key={item.id} style={styles.itemRow}>
-                            <span style={{ flex: 1 }}>{item.name}</span>
-                            <button style={styles.notesBtn} title="View / add notes" onClick={() => setNotesItem(item)}>+</button>
-                            {isMyTurn && (
-                              <button style={styles.pickBtn} disabled={submitting || blocked} onClick={() => submitPick(item.id)}>Pick</button>
-                            )}
-                          </li>
-                        ))}
+                        {bucketItems.map((item) => renderItem(item, blocked))}
                       </ul>
                     </div>
                   );
@@ -236,30 +317,14 @@ export default function DraftRoom() {
                       Other ({groupedItems[''].length})
                     </div>
                     <ul style={{ ...styles.itemList, margin: 0 }}>
-                      {groupedItems[''].map((item) => (
-                        <li key={item.id} style={styles.itemRow}>
-                          <span style={{ flex: 1 }}>{item.name}</span>
-                          <button style={styles.notesBtn} title="View / add notes" onClick={() => setNotesItem(item)}>+</button>
-                          {isMyTurn && (
-                            <button style={styles.pickBtn} disabled={submitting} onClick={() => submitPick(item.id)}>Pick</button>
-                          )}
-                        </li>
-                      ))}
+                      {groupedItems[''].map((item) => renderItem(item, false))}
                     </ul>
                   </div>
                 )}
               </div>
             ) : (
               <ul style={styles.itemList}>
-                {filteredItems.map((item) => (
-                  <li key={item.id} style={styles.itemRow}>
-                    <span style={{ flex: 1 }}>{item.name}</span>
-                    <button style={styles.notesBtn} title="View / add notes" onClick={() => setNotesItem(item)}>+</button>
-                    {isMyTurn && (
-                      <button style={styles.pickBtn} disabled={submitting} onClick={() => submitPick(item.id)}>Pick</button>
-                    )}
-                  </li>
-                ))}
+                {filteredItems.map((item) => renderItem(item, false))}
               </ul>
             )}
           </section>
@@ -274,7 +339,7 @@ export default function DraftRoom() {
                 <th style={styles.th}>Round</th>
                 {members.map((m) => (
                   <th key={m.id} style={{ ...styles.th, ...(m.id === draft.currentMemberId ? styles.thActive : {}) }}>
-                    {m.user?.displayName ?? m.inviteEmail}
+                    {memberDisplay(m)}
                     {onlineUsers.includes(m.userId ?? '') && <span style={styles.onlineDot} />}
                   </th>
                 ))}
@@ -315,7 +380,7 @@ export default function DraftRoom() {
               <li key={p.id} style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
                 <div style={{ fontWeight: 500 }}>{p.item.name}</div>
                 <div style={{ color: '#888', fontSize: 12 }}>
-                  {p.member.user?.displayName ?? p.member.inviteEmail} · R{p.round}.{p.positionInRound}
+                  {memberDisplay(p.member)} · R{p.round}.{p.positionInRound}
                   {p.isAutoPick && ' (auto)'}
                 </div>
               </li>
@@ -323,99 +388,9 @@ export default function DraftRoom() {
           </ul>
         </section>
       </div>
-
-      {/* Notes Modal */}
-      {notesItem && leagueId && (
-        <NotesModal
-          item={notesItem}
-          leagueId={leagueId}
-          onClose={() => setNotesItem(null)}
-        />
-      )}
     </div>
   );
 }
-
-// ─── Notes Modal ─────────────────────────────────────────────────────────────
-
-function NotesModal({ item, leagueId, onClose }: { item: DraftItem; leagueId: string; onClose: () => void }) {
-  const [myNote, setMyNote] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    api.get(`/leagues/${leagueId}/items/${item.id}/notes`).then(({ data }) => {
-      setMyNote(data.myNote ?? '');
-      setLoaded(true);
-    });
-  }, [item.id, leagueId]);
-
-  async function save() {
-    setSaving(true);
-    try {
-      await api.put(`/leagues/${leagueId}/items/${item.id}/notes/mine`, { note: myNote });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div style={modal.overlay} onClick={onClose}>
-      <div style={modal.box} onClick={(e) => e.stopPropagation()}>
-        <div style={modal.header}>
-          <h2 style={modal.title}>{item.name}</h2>
-          <button style={modal.closeBtn} onClick={onClose}>✕</button>
-        </div>
-
-        {/* Commissioner Notes */}
-        <div style={modal.section}>
-          <p style={modal.sectionLabel}>Commissioner Notes</p>
-          {item.commissionerNotes ? (
-            <p style={modal.commissionerText}>{item.commissionerNotes}</p>
-          ) : (
-            <p style={modal.empty}>No commissioner notes for this player.</p>
-          )}
-        </div>
-
-        {/* Personal Notes */}
-        <div style={modal.section}>
-          <p style={modal.sectionLabel}>My Notes <span style={modal.privateTag}>private</span></p>
-          {loaded ? (
-            <>
-              <textarea
-                style={modal.textarea}
-                placeholder="Add your personal scouting notes..."
-                value={myNote}
-                onChange={(e) => setMyNote(e.target.value)}
-                rows={5}
-              />
-              <button style={modal.saveBtn} onClick={save} disabled={saving}>
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-            </>
-          ) : (
-            <p style={modal.empty}>Loading...</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const modal: Record<string, React.CSSProperties> = {
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 },
-  box: { background: '#fff', borderRadius: 10, width: '100%', maxWidth: 480, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb' },
-  title: { fontSize: 18, fontWeight: 700, margin: 0 },
-  closeBtn: { background: 'none', border: 'none', fontSize: 18, color: '#888', lineHeight: 1 },
-  section: { padding: '16px 20px', borderBottom: '1px solid #f0f0f0' },
-  sectionLabel: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280', marginBottom: 8 },
-  commissionerText: { fontSize: 14, lineHeight: 1.6, color: '#1a1a1a', background: '#f8fafc', padding: '10px 12px', borderRadius: 6, margin: 0 },
-  privateTag: { background: '#f3f4f6', color: '#6b7280', fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 999, marginLeft: 6, textTransform: 'uppercase' },
-  textarea: { width: '100%', padding: '8px 10px', border: '1px solid #ddd', borderRadius: 4, fontSize: 14, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' },
-  saveBtn: { marginTop: 8, padding: '7px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 600, fontSize: 14 },
-  empty: { fontSize: 13, color: '#aaa', margin: 0, fontStyle: 'italic' },
-};
 
 const styles: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f5f5f5', display: 'flex', flexDirection: 'column' },
@@ -429,9 +404,12 @@ const styles: Record<string, React.CSSProperties> = {
   panelTitle: { fontSize: 15, fontWeight: 700, marginBottom: 12 },
   input: { padding: '7px 10px', border: '1px solid #ddd', borderRadius: 4, fontSize: 14 },
   itemList: { listStyle: 'none', maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' },
-  itemRow: { display: 'flex', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #f0f0f0', gap: 8, fontSize: 14 },
-  notesBtn: { padding: '2px 8px', background: 'transparent', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: 4, fontWeight: 700, fontSize: 14, lineHeight: 1.4 },
-  pickBtn: { padding: '4px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 600, fontSize: 13 },
+  itemRow: { display: 'flex', alignItems: 'flex-start', padding: '7px 0', borderBottom: '1px solid #f0f0f0', gap: 8 },
+  pickBtn: { padding: '4px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 600, fontSize: 13, flexShrink: 0 },
+  commNote: { fontSize: 12, color: '#6b7280', fontStyle: 'italic', marginTop: 3 },
+  myNote: { fontSize: 12, color: '#2563eb', fontStyle: 'italic', marginTop: 3, cursor: 'pointer' },
+  addNote: { fontSize: 12, color: '#d1d5db', marginTop: 3, cursor: 'pointer' },
+  inlineTextarea: { width: '100%', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 4, padding: '4px 6px', resize: 'vertical' as const, fontFamily: 'inherit', marginTop: 3, boxSizing: 'border-box' as const },
   table: { borderCollapse: 'collapse', width: '100%', fontSize: 13 },
   th: { padding: '8px 12px', background: '#f8fafc', border: '1px solid #e5e7eb', fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'left' },
   thActive: { background: '#dbeafe', color: '#1d4ed8' },

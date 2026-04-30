@@ -41,7 +41,7 @@ export function createPickTimerWorker(io: import('socket.io').Server) {
             where: { id: draft.leagueId },
             include: {
               settings: true,
-              members: { where: { inviteStatus: 'ACCEPTED' }, orderBy: { draftPosition: 'asc' } },
+              members: { where: { inviteStatus: { not: 'DECLINED' } }, orderBy: { draftPosition: 'asc' } },
             },
           });
 

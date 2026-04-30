@@ -71,10 +71,11 @@ export default function LeagueSetup() {
   });
 
   const [settingsForm, setSettingsForm] = useState({
-    format: 'SNAKE', totalRounds: 15, pickTimerSeconds: 43200, autoPick: 'RANDOM',
+    format: 'SNAKE', totalRounds: 3, pickTimerSeconds: 7200, autoPick: 'RANDOM',
     enforceBucketPicking: false,
   });
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteDisplayName, setInviteDisplayName] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
   const [bulkItems, setBulkItems] = useState('');
   const [bulkBucket, setBulkBucket] = useState('');
@@ -111,8 +112,17 @@ export default function LeagueSetup() {
   });
 
   const inviteMember = useMutation({
-    mutationFn: () => api.post(`/leagues/${id}/members/invite`, { email: inviteEmail, notifyPhone: invitePhone || undefined }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['league', id] }); setInviteEmail(''); setInvitePhone(''); },
+    mutationFn: () => api.post(`/leagues/${id}/members/invite`, {
+      email: inviteEmail,
+      displayName: inviteDisplayName || undefined,
+      notifyPhone: invitePhone || undefined,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['league', id] });
+      setInviteEmail('');
+      setInviteDisplayName('');
+      setInvitePhone('');
+    },
   });
 
   const randomizeOrder = useMutation({
@@ -260,6 +270,8 @@ export default function LeagueSetup() {
             {isCommissioner && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <input style={{ ...styles.input, flex: 1 }} placeholder="Name" value={inviteDisplayName}
+                    onChange={(e) => setInviteDisplayName(e.target.value)} />
                   <input style={{ ...styles.input, flex: 1 }} placeholder="Email to invite" value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)} />
                   <button style={styles.primaryBtn} onClick={() => inviteMember.mutate()}>Invite</button>
@@ -272,12 +284,12 @@ export default function LeagueSetup() {
               Randomize Draft Order
             </button>
             <ul style={{ listStyle: 'none' }}>
-              {(league?.members ?? []).map((m: { id: string; inviteEmail: string; inviteStatus: string; draftPosition: number | null; user?: { displayName: string } }) => (
+              {(league?.members ?? []).map((m: { id: string; inviteEmail: string; displayName?: string | null; inviteStatus: string; draftPosition: number | null; user?: { displayName: string } }) => (
                 <li key={m.id} style={styles.memberRow}>
                   <span style={styles.position}>{m.draftPosition ?? '—'}</span>
                   <div>
-                    <div style={{ fontWeight: 500 }}>{m.user?.displayName ?? m.inviteEmail}</div>
-                    <div style={{ fontSize: 12, color: '#888' }}>{m.inviteStatus}</div>
+                    <div style={{ fontWeight: 500 }}>{m.user?.displayName ?? m.displayName ?? m.inviteEmail.split('@')[0]}</div>
+                    <div style={{ fontSize: 12, color: '#888' }}>{m.inviteEmail} · {m.inviteStatus}</div>
                   </div>
                 </li>
               ))}

@@ -21,6 +21,7 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
   if (!config.SENDGRID_API_KEY) {
     console.log('[Email] No SENDGRID_API_KEY configured — skipping email to', payload.to);
     console.log('[Email] Subject:', payload.subject);
+    console.log('[Email] Body:', payload.text);
     return;
   }
   await transporter.sendMail({

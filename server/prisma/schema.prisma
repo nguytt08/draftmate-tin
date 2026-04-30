@@ -60,7 +60,7 @@ model DraftSettings {
 
   format                DraftFormat      @default(SNAKE)
   totalRounds           Int
-  pickTimerSeconds      Int              @default(43200)
+  pickTimerSeconds      Int              @default(7200)
   autoPick              AutoPickBehavior @default(RANDOM)
   allowTrading          Boolean          @default(false)
   enforceBucketPicking  Boolean          @default(false)
@@ -94,6 +94,7 @@ model LeagueMember {
   inviteEmail   String
   inviteToken   String?      @unique
   inviteStatus  InviteStatus @default(PENDING)
+  displayName   String?
   draftPosition Int?
   notifyEmail   Boolean      @default(true)
   notifyPhone   String?

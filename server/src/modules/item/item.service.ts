@@ -75,6 +75,14 @@ export async function getItemNotes(leagueId: string, itemId: string, memberId: s
   };
 }
 
+export async function getAllMyNotes(leagueId: string, memberId: string): Promise<Record<string, string>> {
+  const notes = await prisma.memberItemNote.findMany({
+    where: { memberId, item: { leagueId } },
+    select: { itemId: true, note: true },
+  });
+  return Object.fromEntries(notes.map((n) => [n.itemId, n.note]));
+}
+
 export async function upsertMyNote(leagueId: string, itemId: string, memberId: string, note: string) {
   const item = await prisma.draftItem.findUnique({ where: { id: itemId } });
   if (!item || item.leagueId !== leagueId) throw new AppError(404, 'Item not found');

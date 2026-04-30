@@ -72,6 +72,55 @@ draftRouter.post('/:id/draft/picks', validate(submitPickSchema), async (req: Req
   } catch (err) { next(err); }
 });
 
+// Reset draft — wipe all picks and restart from pick 1 (commissioner only)
+draftRouter.post('/:id/draft/reset', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const league = await prisma.league.findUnique({
+      where: { id: req.params.id },
+      include: {
+        draft: true,
+        settings: true,
+        members: { where: { inviteStatus: { not: 'DECLINED' } }, orderBy: { draftPosition: 'asc' } },
+      },
+    });
+    if (!league?.draft) throw new AppError(404, 'Draft not found');
+
+    const draft = league.draft;
+    const { timerService } = await import('../../services/timer/timer.service');
+
+    // Cancel all active BullMQ timer jobs for this draft
+    const activeJobs = await prisma.pickTimerJob.findMany({
+      where: { draftId: draft.id, status: 'ACTIVE' },
+    });
+    await Promise.all(activeJobs.map((j) => timerService.cancelPickTimer(draft.id, j.pickNumber)));
+
+    // Wipe picks and reset items + draft state in one transaction
+    await prisma.$transaction([
+      prisma.pick.deleteMany({ where: { draftId: draft.id } }),
+      prisma.draftItem.updateMany({ where: { leagueId: req.params.id }, data: { isAvailable: true } }),
+      prisma.draft.update({
+        where: { id: draft.id },
+        data: {
+          status: 'ACTIVE',
+          currentPickNumber: 1,
+          currentRound: 1,
+          currentMemberId: league.members[0]?.id ?? null,
+          completedAt: null,
+        },
+      }),
+    ]);
+
+    // Schedule a fresh timer for pick 1
+    if (league.members.length > 0 && league.settings) {
+      await timerService.schedulePickTimer(draft.id, 1, league.settings.pickTimerSeconds);
+    }
+
+    const state = await getEngine().getDraftState(draft.id);
+    io.to(`draft:${draft.id}`).emit('draft:state', state);
+    res.json(state);
+  } catch (err) { next(err); }
+});
+
 // List picks
 draftRouter.get('/:id/draft/picks', async (req: Request, res: Response, next: NextFunction) => {
   try {

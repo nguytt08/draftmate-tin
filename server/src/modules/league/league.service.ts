@@ -33,8 +33,8 @@ export async function createLeague(commissionerId: string, input: CreateLeagueIn
       settings: {
         create: {
           format: 'SNAKE',
-          totalRounds: 15,
-          pickTimerSeconds: 43200,
+          totalRounds: 3,
+          pickTimerSeconds: 7200,
           autoPick: 'RANDOM',
         },
       },
@@ -116,6 +116,7 @@ export async function inviteMember(leagueId: string, commissionerId: string, inp
     data: {
       leagueId,
       inviteEmail: input.email,
+      displayName: input.displayName,
       inviteToken,
       notifyPhone: input.notifyPhone,
     },

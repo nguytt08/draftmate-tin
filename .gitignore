@@ -5,8 +5,6 @@ build/
 .env.local
 *.local
 
-# # Prisma
-# server/prisma/migrations/
 
 # Logs
 *.log
