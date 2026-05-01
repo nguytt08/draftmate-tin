@@ -16,6 +16,9 @@ export default function Login() {
     try {
       const { data } = await api.post('/auth/login', { email, password });
       setAuth(data.user, data.accessToken);
+      if (data.recoveryToken) {
+        localStorage.setItem('draftmate:recovery-token', data.recoveryToken);
+      }
       navigate('/');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error;

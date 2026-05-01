@@ -345,7 +345,7 @@ export default function LeagueSetup() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h2 style={{ ...styles.sectionTitle, marginBottom: 0 }}>Members ({league?.members?.length ?? 0})</h2>
               {isCommissioner && !alreadyMember && (
-                <button style={styles.ghostBtn} onClick={() => selfJoin.mutate()} disabled={selfJoin.isPending}>
+                <button style={{ ...styles.ghostBtn, padding: '4px 10px', fontSize: 12 }} onClick={() => selfJoin.mutate()} disabled={selfJoin.isPending}>
                   + Join as drafter
                 </button>
               )}
@@ -504,17 +504,19 @@ export default function LeagueSetup() {
             <h2 style={styles.sectionTitle}>Item Pool ({items.length})</h2>
             {isCommissioner && (
               <>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                  <input style={{ ...styles.input, flex: 2 }} placeholder="Item name" value={newItemName}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                  <input style={{ ...styles.input, width: '100%', boxSizing: 'border-box' }} placeholder="Item name" value={newItemName}
                     onChange={(e) => setNewItemName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addItem.mutate()} />
-                  <input style={{ ...styles.input, flex: 1 }} placeholder="Bucket (e.g. UPPER)" value={newItemBucket}
-                    onChange={(e) => setNewItemBucket(e.target.value)}
-                    list="bucket-suggestions" />
-                  <datalist id="bucket-suggestions">
-                    {namedBuckets.map((b) => <option key={b} value={b} />)}
-                  </datalist>
-                  <button style={styles.primaryBtn} onClick={() => addItem.mutate()}>Add</button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input style={{ ...styles.input, flex: 1, minWidth: 0 }} placeholder="Bucket (e.g. UPPER)" value={newItemBucket}
+                      onChange={(e) => setNewItemBucket(e.target.value)}
+                      list="bucket-suggestions" />
+                    <datalist id="bucket-suggestions">
+                      {namedBuckets.map((b) => <option key={b} value={b} />)}
+                    </datalist>
+                    <button style={styles.primaryBtn} onClick={() => addItem.mutate()}>Add</button>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 10px' }}>
@@ -535,7 +537,7 @@ export default function LeagueSetup() {
                     value={bulkItems}
                     onChange={(e) => setBulkItems(e.target.value)}
                   />
-                  <button style={styles.ghostBtn} onClick={() => bulkAdd.mutate()}>Bulk Add</button>
+                  <button style={{ ...styles.ghostBtn, width: '100%' }} onClick={() => bulkAdd.mutate()}>Bulk Add</button>
                 </div>
               </>
             )}

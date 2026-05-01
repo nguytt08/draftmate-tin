@@ -29,9 +29,9 @@ authRouter.post('/register', validate(registerSchema), async (req: Request, res:
 
 authRouter.post('/login', validate(loginSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { accessToken, refreshToken, user } = await authService.login(req.body);
+    const { accessToken, refreshToken, recoveryToken, user } = await authService.login(req.body);
     res.cookie(COOKIE_NAME, refreshToken, cookieOptions);
-    res.json({ accessToken, user });
+    res.json({ accessToken, user, recoveryToken });
   } catch (err) {
     next(err);
   }

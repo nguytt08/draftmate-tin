@@ -71,8 +71,18 @@ export async function login(input: LoginInput) {
     },
   });
 
+  const memberWithToken = await prisma.leagueMember.findFirst({
+    where: { userId: user.id, inviteToken: { not: null } },
+    select: { inviteToken: true },
+  });
+
   const accessToken = generateAccessToken(user.id, user.email, user.displayName);
-  return { accessToken, refreshToken: rawRefresh, user: { id: user.id, email: user.email, displayName: user.displayName } };
+  return {
+    accessToken,
+    refreshToken: rawRefresh,
+    recoveryToken: memberWithToken?.inviteToken ?? null,
+    user: { id: user.id, email: user.email, displayName: user.displayName },
+  };
 }
 
 export async function refresh(rawToken: string) {
