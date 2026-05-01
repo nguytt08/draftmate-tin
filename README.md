@@ -4,7 +4,7 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 
 ## Features
 
-- **Async drafting** — configurable pick timer (default 2 hours); auto-pick fires if the timer expires
+- **Async drafting** — configurable pick timer (default 2 hours); when the timer expires the configured auto-pick behavior fires: random item, skip (falls back to random), or **Commissioner Pick** — timer expires silently and the commissioner uses the Override button to make the call manually
 - **Real-time board** — Socket.io pushes full board snapshots to all connected clients after every pick, auto-pick, pause, and resume — no page refresh needed; draft room header shows the league name, current round/pick, and a live countdown timer
 - **Custom item pools** — commissioners define any pool of items to draft from (players, teams, movies, etc.); add items one at a time or bulk-import from a newline-separated list
 - **Bucket / category system** — items can be grouped into named buckets (e.g. UPPER, LOWER, GIRL, REC); displayed as columns in both the league setup and the draft room

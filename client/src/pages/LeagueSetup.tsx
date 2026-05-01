@@ -71,7 +71,7 @@ export default function LeagueSetup() {
   });
 
   const [settingsForm, setSettingsForm] = useState({
-    format: 'SNAKE', totalRounds: 3, pickTimerSeconds: 7200, autoPick: 'RANDOM',
+    format: 'SNAKE', totalRounds: 3, pickTimerSeconds: 7200, autoPick: 'COMMISSIONER_PICK',
     enforceBucketPicking: false,
   });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -314,6 +314,7 @@ export default function LeagueSetup() {
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Auto-Pick on Timer</label>
                 <select style={styles.input} value={settingsForm.autoPick} onChange={(e) => setSettingsForm((f) => ({ ...f, autoPick: e.target.value }))}>
+                  <option value="COMMISSIONER_PICK">Commissioner must pick</option>
                   <option value="RANDOM">Random available item</option>
                   <option value="SKIP">Skip pick</option>
                 </select>

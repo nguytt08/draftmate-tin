@@ -50,6 +50,14 @@ export function createPickTimerWorker(io: import('socket.io').Server) {
           const members = league.members;
           const strategy = createDraftStrategy(settings.format);
 
+          if (settings.autoPick === 'COMMISSIONER_PICK') {
+            await tx.pickTimerJob.update({
+              where: { id: timerJob.id },
+              data: { status: 'FIRED' },
+            });
+            return { commissionerPickRequired: true } as const;
+          }
+
           // Pick a random available item
           const availableItems = await tx.draftItem.findMany({
             where: { leagueId: league.id, isAvailable: true },
@@ -113,6 +121,14 @@ export function createPickTimerWorker(io: import('socket.io').Server) {
       );
 
       if (!result) return;
+
+      if ('commissionerPickRequired' in result) {
+        const engine = new DraftEngine(prisma, io);
+        const state = await engine.getDraftState(draftId);
+        io.of('/draft').to(`draft:${draftId}`).emit('draft:state', state);
+        io.of('/draft').to(`draft:${draftId}`).emit('draft:commissioner_pick_required', { draftId, pickNumber });
+        return;
+      }
 
       const { pick, complete, nextMemberId, nextPickNumber, settings, league } = result;
 

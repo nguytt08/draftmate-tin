@@ -63,7 +63,7 @@ model DraftSettings {
   format                DraftFormat      @default(SNAKE)
   totalRounds           Int
   pickTimerSeconds      Int              @default(7200)
-  autoPick              AutoPickBehavior @default(RANDOM)
+  autoPick              AutoPickBehavior @default(COMMISSIONER_PICK)
   allowTrading          Boolean          @default(false)
   enforceBucketPicking  Boolean          @default(false)
   extendedConfig        Json?
@@ -82,6 +82,7 @@ enum AutoPickBehavior {
   RANDOM
   SKIP
   BEST_RANKED
+  COMMISSIONER_PICK
 }
 
 // ─── LEAGUE MEMBERS ───────────────────────────────────────────────────────────

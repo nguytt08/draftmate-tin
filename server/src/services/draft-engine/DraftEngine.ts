@@ -24,7 +24,7 @@ export class DraftEngine {
     if (league.commissionerId !== commissionerId) throw new AppError(403, 'Commissioner only');
     if (!league.settings) {
       await this.prisma.draftSettings.create({
-        data: { leagueId, format: 'SNAKE', totalRounds: 3, pickTimerSeconds: 7200, autoPick: 'RANDOM' },
+        data: { leagueId, format: 'SNAKE', totalRounds: 3, pickTimerSeconds: 7200, autoPick: 'COMMISSIONER_PICK' },
       });
       league.settings = await this.prisma.draftSettings.findUniqueOrThrow({ where: { leagueId } });
     }
