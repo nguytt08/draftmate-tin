@@ -40,6 +40,13 @@ leagueRouter.get('/:id', async (req: Request, res: Response, next: NextFunction)
   } catch (err) { next(err); }
 });
 
+leagueRouter.delete('/:id', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await leagueService.deleteLeague(req.params.id);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 leagueRouter.patch('/:id', requireCommissioner(), validate(updateLeagueSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.json(await leagueService.updateLeague(req.params.id, req.body));

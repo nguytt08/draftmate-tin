@@ -31,6 +31,11 @@ export default function Dashboard() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['leagues'] }); setCreating(false); setNewLeagueName(''); },
   });
 
+  const deleteLeague = useMutation({
+    mutationFn: (leagueId: string) => api.delete(`/leagues/${leagueId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['leagues'] }),
+  });
+
   async function logout() {
     await api.post('/auth/logout');
     clearAuth();
@@ -84,7 +89,20 @@ export default function Dashboard() {
             const isMyTurn = draftActive && myMemberId && league.draft?.currentMemberId === myMemberId;
 
             return (
-              <div key={league.id} style={{ ...styles.leagueCard, ...(isMyTurn ? styles.leagueCardActive : {}) }}>
+              <div key={league.id} style={{ ...styles.leagueCard, ...(isMyTurn ? styles.leagueCardActive : {}), position: 'relative' }}>
+                {isCommissioner && (
+                  <button
+                    style={styles.deleteBtn}
+                    title="Delete league"
+                    onClick={() => {
+                      if (confirm(`Delete "${league.name}"? This cannot be undone.`)) {
+                        deleteLeague.mutate(league.id);
+                      }
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
                 <h3 style={{ margin: '0 0 6px' }}>{league.name}</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <p style={{ color: '#666', fontSize: 14, margin: 0 }}>
@@ -147,4 +165,5 @@ const styles: Record<string, React.CSSProperties> = {
   badgeGray: { background: '#f3f4f6', color: '#6b7280' },
   leagueCardActive: { borderLeft: '3px solid #16a34a' },
   turnBtn: { padding: '8px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 700, fontSize: 14 },
+  deleteBtn: { position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#9ca3af', fontSize: 14, cursor: 'pointer', lineHeight: 1, padding: '2px 4px', borderRadius: 4 },
 };

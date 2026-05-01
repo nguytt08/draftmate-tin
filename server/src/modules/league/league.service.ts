@@ -185,6 +185,10 @@ export async function updateMemberPosition(leagueId: string, memberId: string, d
   return prisma.leagueMember.update({ where: { id: memberId }, data: { draftPosition } });
 }
 
+export async function deleteLeague(leagueId: string) {
+  await prisma.league.delete({ where: { id: leagueId } });
+}
+
 export async function randomizeDraftOrder(leagueId: string) {
   const members = await prisma.leagueMember.findMany({ where: { leagueId } });
   const shuffled = [...members].sort(() => Math.random() - 0.5);
