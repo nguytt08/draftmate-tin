@@ -288,6 +288,17 @@ export default function LeagueSetup() {
                     </button>
                   )}
                 </div>
+                {(() => {
+                  const eligibleCount = (league?.members ?? []).filter((m: any) => m.inviteStatus !== 'DECLINED').length;
+                  if (eligibleCount === 0) return null;
+                  const picksNeeded = settingsForm.totalRounds * eligibleCount;
+                  const ok = items.length >= picksNeeded;
+                  return (
+                    <div style={{ fontSize: 12, color: ok ? '#6b7280' : '#dc2626', marginTop: 4 }}>
+                      {settingsForm.totalRounds} rounds × {eligibleCount} members = {picksNeeded} picks — {ok ? `${items.length} items ✓` : `need ${picksNeeded - items.length} more items`}
+                    </div>
+                  );
+                })()}
               </div>
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Pick Timer (seconds)</label>

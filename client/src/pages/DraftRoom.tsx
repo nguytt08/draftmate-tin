@@ -400,7 +400,7 @@ export default function DraftRoom() {
                 <div style={{ color: '#888', fontSize: 12 }}>
                   {memberDisplay(p.member)} · R{p.round}.{p.positionInRound}
                   {p.isAutoPick && ' (auto)'}
-                  {p.isOverridePick && ' (commissioner pick)'}
+                  {p.isOverridePick && ' (override)'}
                 </div>
               </li>
             ))}
