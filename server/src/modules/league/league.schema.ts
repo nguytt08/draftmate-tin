@@ -11,7 +11,7 @@ export const draftSettingsSchema = z.object({
   format: z.enum(['SNAKE', 'LINEAR', 'AUCTION']).default('SNAKE'),
   totalRounds: z.number().int().min(1).max(50),
   pickTimerSeconds: z.number().int().min(60).default(7200),
-  autoPick: z.enum(['RANDOM', 'SKIP', 'BEST_RANKED']).default('RANDOM'),
+  autoPick: z.enum(['RANDOM', 'SKIP', 'BEST_RANKED', 'COMMISSIONER_PICK']).default('COMMISSIONER_PICK'),
   allowTrading: z.boolean().default(false),
   enforceBucketPicking: z.boolean().default(false),
   extendedConfig: z.record(z.unknown()).optional(),

@@ -26,7 +26,7 @@ export async function createLeague(commissionerId: string, input: CreateLeagueIn
           format: 'SNAKE',
           totalRounds: 3,
           pickTimerSeconds: 7200,
-          autoPick: 'RANDOM',
+          autoPick: 'COMMISSIONER_PICK',
         },
       },
     },
