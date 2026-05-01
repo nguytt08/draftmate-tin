@@ -176,7 +176,10 @@ export async function revokeMember(leagueId: string, memberId: string) {
 export async function removeMember(leagueId: string, memberId: string) {
   const member = await prisma.leagueMember.findUnique({ where: { id: memberId } });
   if (!member || member.leagueId !== leagueId) throw new AppError(404, 'Member not found');
-  await prisma.leagueMember.delete({ where: { id: memberId } });
+  await prisma.$transaction([
+    prisma.pick.deleteMany({ where: { memberId } }),
+    prisma.leagueMember.delete({ where: { id: memberId } }),
+  ]);
 }
 
 export async function updateMemberPosition(leagueId: string, memberId: string, draftPosition: number) {

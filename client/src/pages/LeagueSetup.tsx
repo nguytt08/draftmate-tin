@@ -346,26 +346,26 @@ export default function LeagueSetup() {
 
           {/* Members */}
           <section style={styles.card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h2 style={{ ...styles.sectionTitle, marginBottom: 0 }}>Members ({league?.members?.length ?? 0})</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <h2 style={{ ...styles.sectionTitle, marginBottom: 0, flex: 1 }}>Members ({league?.members?.length ?? 0})</h2>
               {isCommissioner && !alreadyMember && (
-                <button style={{ ...styles.ghostBtn, padding: '4px 10px', fontSize: 12 }} onClick={() => selfJoin.mutate()} disabled={selfJoin.isPending}>
+                <button style={{ ...styles.ghostBtn, padding: '4px 10px', fontSize: 12, flexShrink: 0 }} onClick={() => selfJoin.mutate()} disabled={selfJoin.isPending}>
                   + Join as drafter
                 </button>
               )}
+              {isCommissioner && (
+                <button style={{ ...styles.primaryBtn, padding: '5px 12px', fontSize: 13, flexShrink: 0 }} onClick={() => inviteMember.mutate()}>
+                  Invite
+                </button>
+              )}
             </div>
+            {/* TODO: re-enable phone field when SMS notifications are implemented */}
             {isCommissioner && (
-              <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input style={{ ...styles.input, flex: 1 }} placeholder="Name" value={inviteDisplayName}
-                    onChange={(e) => setInviteDisplayName(e.target.value)} />
-                  <input style={{ ...styles.input, flex: 1 }} placeholder="Email (optional)" value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)} />
-                </div>
-                {/* TODO: re-enable phone field when SMS notifications are implemented */}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button style={styles.primaryBtn} onClick={() => inviteMember.mutate()}>Invite</button>
-                </div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input style={{ ...styles.input, flex: 1, minWidth: 0 }} placeholder="Name" value={inviteDisplayName}
+                  onChange={(e) => setInviteDisplayName(e.target.value)} />
+                <input style={{ ...styles.input, flex: 1, minWidth: 0 }} placeholder="Email (optional)" value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)} />
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -505,22 +505,26 @@ export default function LeagueSetup() {
 
           {/* Item Pool — add controls only; item display is in the full-width section below */}
           <section style={styles.card}>
-            <h2 style={styles.sectionTitle}>Item Pool ({items.length})</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <h2 style={{ ...styles.sectionTitle, marginBottom: 0, flex: 1 }}>Item Pool ({items.length})</h2>
+              {isCommissioner && (
+                <button style={{ ...styles.primaryBtn, padding: '5px 12px', fontSize: 13, flexShrink: 0 }} onClick={() => addItem.mutate()}>
+                  Add
+                </button>
+              )}
+            </div>
             {isCommissioner && (
               <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-                  <input style={{ ...styles.input, width: '100%', boxSizing: 'border-box' }} placeholder="Item name" value={newItemName}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                  <input style={{ ...styles.input, flex: 2, minWidth: 0 }} placeholder="Item name" value={newItemName}
                     onChange={(e) => setNewItemName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addItem.mutate()} />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input style={{ ...styles.input, flex: 1, minWidth: 0 }} placeholder="Bucket (e.g. UPPER)" value={newItemBucket}
-                      onChange={(e) => setNewItemBucket(e.target.value)}
-                      list="bucket-suggestions" />
-                    <datalist id="bucket-suggestions">
-                      {namedBuckets.map((b) => <option key={b} value={b} />)}
-                    </datalist>
-                    <button style={styles.primaryBtn} onClick={() => addItem.mutate()}>Add</button>
-                  </div>
+                  <input style={{ ...styles.input, flex: 1, minWidth: 0 }} placeholder="Bucket (e.g. UPPER)" value={newItemBucket}
+                    onChange={(e) => setNewItemBucket(e.target.value)}
+                    list="bucket-suggestions" />
+                  <datalist id="bucket-suggestions">
+                    {namedBuckets.map((b) => <option key={b} value={b} />)}
+                  </datalist>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 10px' }}>
