@@ -65,6 +65,27 @@ authRouter.get('/me', requireAuth, (req: Request, res: Response) => {
   res.json({ user: req.user });
 });
 
+authRouter.post('/join/:code/claim', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { memberId, displayName } = req.body;
+    if (!memberId) { res.status(400).json({ error: 'memberId required' }); return; }
+    const { accessToken, refreshToken, user } = await authService.joinClaim(req.params.code, memberId, displayName);
+    res.cookie(COOKIE_NAME, refreshToken, cookieOptions);
+    res.json({ accessToken, user });
+  } catch (err) { next(err); }
+});
+
+authRouter.post('/invite/magic/:token', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { displayName } = req.body;
+    const { accessToken, refreshToken, user } = await authService.magicLinkAccept(req.params.token, displayName);
+    res.cookie(COOKIE_NAME, refreshToken, cookieOptions);
+    res.json({ accessToken, user });
+  } catch (err) {
+    next(err);
+  }
+});
+
 authRouter.post('/invite/accept/:token', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { password, displayName } = req.body;

@@ -12,6 +12,13 @@ import * as leagueService from './league.service';
 
 export const leagueRouter = Router();
 
+// Public — no auth required; must be before requireAuth middleware
+leagueRouter.get('/join/:code', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await leagueService.getLeagueByJoinCode(req.params.code));
+  } catch (err) { next(err); }
+});
+
 leagueRouter.use(requireAuth);
 
 leagueRouter.post('/', validate(createLeagueSchema), async (req: Request, res: Response, next: NextFunction) => {
@@ -74,5 +81,18 @@ leagueRouter.delete('/:id/members/:memberId', requireCommissioner(), async (req:
   try {
     await leagueService.removeMember(req.params.id, req.params.memberId);
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+leagueRouter.post('/:id/members/:memberId/revoke', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await leagueService.revokeMember(req.params.id, req.params.memberId));
+  } catch (err) { next(err); }
+});
+
+leagueRouter.post('/:id/join-code', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const league = await leagueService.upsertJoinCode(req.params.id);
+    res.json({ joinCode: league.joinCode });
   } catch (err) { next(err); }
 });

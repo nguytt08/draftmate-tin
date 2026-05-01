@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
@@ -74,6 +74,9 @@ export default function LeagueSetup() {
     format: 'SNAKE', totalRounds: 3, pickTimerSeconds: 7200, autoPick: 'RANDOM',
     enforceBucketPicking: false,
   });
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  // Tracks the last values confirmed saved to (or loaded from) the server
+  const serverSettingsRef = useRef<typeof settingsForm | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteDisplayName, setInviteDisplayName] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
@@ -87,15 +90,39 @@ export default function LeagueSetup() {
 
   useEffect(() => {
     if (league?.settings) {
-      setSettingsForm({
+      const s = {
         format: league.settings.format,
         totalRounds: league.settings.totalRounds,
         pickTimerSeconds: league.settings.pickTimerSeconds,
         autoPick: league.settings.autoPick,
         enforceBucketPicking: league.settings.enforceBucketPicking ?? false,
-      });
+      };
+      serverSettingsRef.current = s;
+      setSettingsForm(s);
     }
   }, [league?.settings]);
+
+  useEffect(() => {
+    if (!serverSettingsRef.current || !id) return;
+    // Skip if form matches server — happens on hydration and after saves
+    if (JSON.stringify(settingsForm) === JSON.stringify(serverSettingsRef.current)) return;
+    setSaveStatus('saving');
+    const timer = setTimeout(async () => {
+      try {
+        await api.put(`/leagues/${id}/settings`, {
+          ...settingsForm,
+          totalRounds: Number(settingsForm.totalRounds),
+          pickTimerSeconds: Number(settingsForm.pickTimerSeconds),
+        });
+        serverSettingsRef.current = { ...settingsForm };
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch {
+        setSaveStatus('idle');
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [settingsForm, id]);
 
   const { data: items = [] } = useQuery<Item[]>({
     queryKey: ['items', id],
@@ -113,7 +140,7 @@ export default function LeagueSetup() {
 
   const inviteMember = useMutation({
     mutationFn: () => api.post(`/leagues/${id}/members/invite`, {
-      email: inviteEmail,
+      email: inviteEmail || undefined,
       displayName: inviteDisplayName || undefined,
       notifyPhone: invitePhone || undefined,
     }),
@@ -127,6 +154,11 @@ export default function LeagueSetup() {
 
   const randomizeOrder = useMutation({
     mutationFn: () => api.post(`/leagues/${id}/members/randomize-order`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', id] }),
+  });
+
+  const revokeMember = useMutation({
+    mutationFn: (memberId: string) => api.post(`/leagues/${id}/members/${memberId}/revoke`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', id] }),
   });
 
@@ -260,7 +292,13 @@ export default function LeagueSetup() {
                   </span>
                 )}
               </div>
-              <button style={styles.primaryBtn} onClick={() => saveSettings.mutate()}>Save Settings</button>
+              <button
+                style={styles.primaryBtn}
+                onClick={() => saveSettings.mutate()}
+                disabled={saveStatus === 'saving'}
+              >
+                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved ✓' : 'Save Settings'}
+              </button>
             </section>
           )}
 
@@ -268,29 +306,60 @@ export default function LeagueSetup() {
           <section style={styles.card}>
             <h2 style={styles.sectionTitle}>Members ({league?.members?.length ?? 0})</h2>
             {isCommissioner && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
                   <input style={{ ...styles.input, flex: 1 }} placeholder="Name" value={inviteDisplayName}
                     onChange={(e) => setInviteDisplayName(e.target.value)} />
-                  <input style={{ ...styles.input, flex: 1 }} placeholder="Email to invite" value={inviteEmail}
+                  <input style={{ ...styles.input, flex: 1 }} placeholder="Email (optional)" value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)} />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input style={{ ...styles.input, flex: 1 }} placeholder="Phone (optional)" value={invitePhone}
+                    onChange={(e) => setInvitePhone(e.target.value)} />
                   <button style={styles.primaryBtn} onClick={() => inviteMember.mutate()}>Invite</button>
                 </div>
-                <input style={styles.input} placeholder="Phone (optional)" value={invitePhone}
-                  onChange={(e) => setInvitePhone(e.target.value)} />
               </div>
             )}
-            <button style={{ ...styles.ghostBtn, marginBottom: 12 }} onClick={() => randomizeOrder.mutate()}>
-              Randomize Draft Order
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <button style={styles.ghostBtn} onClick={() => randomizeOrder.mutate()}>
+                Randomize Draft Order
+              </button>
+              {isCommissioner && (
+                <button
+                  style={styles.ghostBtn}
+                  onClick={async () => {
+                    const { data } = await api.post(`/leagues/${id}/join-code`);
+                    const link = `${window.location.origin}/join/${data.joinCode}`;
+                    navigator.clipboard.writeText(link);
+                    qc.invalidateQueries({ queryKey: ['league', id] });
+                  }}
+                >
+                  {league?.joinCode ? 'Copy Join Link' : 'Generate & Copy Join Link'}
+                </button>
+              )}
+            </div>
+            {isCommissioner && league?.joinCode && (
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>
+                Join link: <code style={{ background: '#f3f4f6', padding: '1px 4px', borderRadius: 3 }}>{window.location.origin}/join/{league.joinCode}</code>
+              </div>
+            )}
             <ul style={{ listStyle: 'none' }}>
-              {(league?.members ?? []).map((m: { id: string; inviteEmail: string; displayName?: string | null; inviteStatus: string; draftPosition: number | null; user?: { displayName: string } }) => (
+              {(league?.members ?? []).map((m: { id: string; inviteEmail: string | null; displayName?: string | null; inviteStatus: string; draftPosition: number | null; user?: { displayName: string } }) => (
                 <li key={m.id} style={styles.memberRow}>
                   <span style={styles.position}>{m.draftPosition ?? '—'}</span>
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{m.user?.displayName ?? m.displayName ?? m.inviteEmail.split('@')[0]}</div>
-                    <div style={{ fontSize: 12, color: '#888' }}>{m.inviteEmail} · {m.inviteStatus}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500 }}>{m.user?.displayName ?? m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : 'Member')}</div>
+                    <div style={{ fontSize: 12, color: '#888' }}>{m.inviteEmail ?? 'No email'} · {m.inviteStatus}</div>
                   </div>
+                  {isCommissioner && m.inviteStatus === 'ACCEPTED' && (
+                    <button
+                      title="Revoke claim — resets this slot to claimable so someone else can join"
+                      onClick={() => { if (confirm('Revoke this member\'s claim? They will be signed out and the slot becomes claimable again.')) revokeMember.mutate(m.id); }}
+                      style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 4, fontSize: 11, padding: '2px 7px', cursor: 'pointer', color: '#dc2626', flexShrink: 0 }}
+                    >
+                      Revoke
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -389,7 +458,14 @@ export default function LeagueSetup() {
                   onDragOver={isCommissioner ? (e) => { e.preventDefault(); setDragOverBucket(''); } : undefined}
                   onDragLeave={isCommissioner ? (e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverBucket(null); } : undefined}
                   onDrop={isCommissioner ? (e) => { e.preventDefault(); if (draggedItemId) { const item = items.find((it) => it.id === draggedItemId); if ((item?.bucket ?? null) !== null) moveItem.mutate({ itemId: draggedItemId, bucket: null }); } setDraggedItemId(null); setDragOverBucket(null); } : undefined}
-                  style={{ borderRadius: 6, border: dragOverBucket === '' ? '2px dashed #9ca3af' : '2px dashed transparent', padding: 6, transition: 'border-color 0.15s' }}
+                  style={{
+                    borderRadius: 6,
+                    border: dragOverBucket === '' ? '2px dashed #6b7280' : (draggedItemId && items.find(it => it.id === draggedItemId)?.bucket ? '2px dashed #d1d5db' : '2px dashed transparent'),
+                    padding: 6,
+                    transition: 'border-color 0.15s',
+                    minHeight: 80,
+                    background: dragOverBucket === '' ? '#f9fafb' : 'transparent',
+                  }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                     <span style={{ background: '#f3f4f6', color: '#6b7280', fontWeight: 700, fontSize: 12, padding: '2px 10px', borderRadius: 999 }}>
@@ -397,6 +473,11 @@ export default function LeagueSetup() {
                     </span>
                     <span style={{ fontSize: 12, color: '#9ca3af' }}>{unbucketed.length}</span>
                   </div>
+                  {unbucketed.length === 0 && draggedItemId && items.find(it => it.id === draggedItemId)?.bucket && (
+                    <div style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', padding: '12px 0', pointerEvents: 'none' }}>
+                      Drop here to remove bucket
+                    </div>
+                  )}
                   <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                     {unbucketed.map((item) => (
                       <li

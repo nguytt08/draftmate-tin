@@ -4,7 +4,7 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 
 ## Features
 
-- **Async drafting** — configurable pick timer (default 12 hours); auto-pick fires if the timer expires
+- **Async drafting** — configurable pick timer (default 2 hours); auto-pick fires if the timer expires
 - **Real-time board** — Socket.io pushes live updates to anyone watching the draft room
 - **Custom item pools** — commissioners define any pool of items to draft from (players, teams, movies, etc.); add items one at a time or bulk-import from a newline-separated list
 - **Bucket / category system** — items can be grouped into named buckets (e.g. UPPER, LOWER, GIRL, REC); displayed as columns in both the league setup and the draft room
@@ -12,9 +12,14 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 - **Drag-and-drop bucket assignment** — commissioners can drag items between bucket columns in league setup to reassign them; dropping on the "No bucket" column clears the assignment
 - **Snake & linear formats** — with the strategy pattern in place for adding more formats later
 - **Email + SMS notifications** — via SendGrid and Twilio
-- **Item notes** — commissioners write public notes on any item; each drafter keeps private personal notes per item visible only to them; commissioner notes are inline-editable without leaving the page
-- **Invite flow** — commissioners invite members by email; invitees create an account on accept
-- **Dashboard navigation** — dashboard shows live draft status per league; non-commissioners see a "Go to Draft" or "Pick Now" link when it's their turn
+- **Inline item notes** — commissioner notes always visible below each item in the draft room; each drafter keeps private personal notes that appear inline and expand to edit on click; a "Hide Notes / Show Notes" toggle lives next to the Available count and persists across page loads
+- **Member display names** — commissioners enter a display name when inviting members; names appear throughout the draft board and pick history; email addresses are not exposed to other members
+- **Magic link invites** — per-member: commissioner invites with name + optional email; invitee gets a 12-char link that authenticates them instantly, no password required; link is persistent and works as a re-login key
+- **Draft join link** — one shareable link per league; anyone with it sees the list of unclaimed member slots and self-selects their identity; commissioner can regenerate the code to revoke old links
+- **Member revocation** — commissioner can revoke any claimed member slot, resetting it to claimable so someone else can join via the join link; old magic link is invalidated on revoke
+- **Auto-save settings** — draft settings (rounds, timer, format, etc.) save automatically 800ms after any change; the Save button shows "Saving…" / "Saved ✓" feedback
+- **Dashboard navigation** — shows live draft status per league; active/paused drafts link to the draft room; completed drafts show a "View Results" button so the board stays accessible after the draft ends
+- **Draft reset** — commissioner can wipe all picks and restart from pick 1 without leaving the draft room
 - **Secure auth** — JWT access tokens (15 min, auto-refreshed silently) + HttpOnly refresh tokens (30-day rotation)
 
 ## Tech Stack
@@ -120,12 +125,12 @@ All routes are prefixed with `/api/v1`. Most require a `Bearer <accessToken>` he
 
 | Group | Key Endpoints |
 |---|---|
-| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/invite/accept/:token` |
-| Leagues | `POST /leagues`, `GET /leagues`, `GET /leagues/:id`, `PATCH /leagues/:id`, `PUT /leagues/:id/settings` |
-| Members | `GET /leagues/:id/members`, `POST /leagues/:id/members/invite`, `POST /leagues/:id/members/randomize-order`, `DELETE /leagues/:id/members/:memberId` |
+| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/invite/magic/:token`, `POST /auth/invite/accept/:token` (password flow), `POST /auth/join/:code/claim` |
+| Leagues | `POST /leagues`, `GET /leagues`, `GET /leagues/:id`, `PATCH /leagues/:id`, `PUT /leagues/:id/settings`, `GET /leagues/join/:code` (public) |
+| Members | `GET /leagues/:id/members`, `POST /leagues/:id/members/invite`, `POST /leagues/:id/members/randomize-order`, `PATCH /leagues/:id/members/:memberId`, `DELETE /leagues/:id/members/:memberId`, `POST /leagues/:id/members/:memberId/revoke`, `POST /leagues/:id/join-code` |
 | Items | `GET /leagues/:id/items`, `POST /leagues/:id/items`, `POST /leagues/:id/items/bulk`, `PATCH /leagues/:id/items/:itemId`, `DELETE /leagues/:id/items/:itemId` |
-| Item Notes | `GET /leagues/:id/items/:itemId/notes`, `PUT /leagues/:id/items/:itemId/notes/mine` |
-| Draft | `POST /leagues/:id/draft/start`, `POST /leagues/:id/draft/pause`, `POST /leagues/:id/draft/resume`, `GET /leagues/:id/draft`, `GET /leagues/:id/draft/board`, `POST /leagues/:id/draft/picks` |
+| Item Notes | `GET /leagues/:id/items/notes/mine` (bulk), `GET /leagues/:id/items/:itemId/notes`, `PUT /leagues/:id/items/:itemId/notes/mine` |
+| Draft | `POST /leagues/:id/draft/start`, `POST /leagues/:id/draft/pause`, `POST /leagues/:id/draft/resume`, `GET /leagues/:id/draft`, `GET /leagues/:id/draft/board`, `POST /leagues/:id/draft/picks`, `POST /leagues/:id/draft/reset` |
 
 ## Running Tests
 

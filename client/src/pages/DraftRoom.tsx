@@ -6,10 +6,10 @@ import { draftSocket } from '../socket/socket';
 import { useAuthStore } from '../store/authStore';
 
 interface DraftItem { id: string; name: string; bucket?: string | null; isAvailable: boolean; metadata?: Record<string, unknown>; commissionerNotes?: string | null }
-interface Member { id: string; inviteEmail: string; displayName?: string | null; draftPosition: number; userId?: string; user?: { displayName: string } }
+interface Member { id: string; inviteEmail: string | null; displayName?: string | null; draftPosition: number; userId?: string; user?: { displayName: string } }
 
-function memberDisplay(m: { user?: { displayName: string } | null; displayName?: string | null; inviteEmail: string }): string {
-  return m.user?.displayName ?? m.displayName ?? m.inviteEmail.split('@')[0];
+function memberDisplay(m: { user?: { displayName: string } | null; displayName?: string | null; inviteEmail: string | null }): string {
+  return m.user?.displayName ?? m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : 'Member');
 }
 interface Pick { id: string; pickNumber: number; round: number; positionInRound: number; memberId: string; itemId: string; isAutoPick: boolean; item: DraftItem; member: Member }
 interface DraftState {
@@ -243,9 +243,6 @@ export default function DraftRoom() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ fontSize: 13, color: '#888' }}>{onlineUsers.length} online</span>
           {draft.timerEndsAt && <span style={{ fontWeight: 700, color: isMyTurn ? '#dc2626' : '#555' }}>{timerDisplay}</span>}
-          <button onClick={toggleNotes} style={{ padding: '4px 10px', fontSize: 12, background: 'none', border: '1px solid #93c5fd', color: '#93c5fd', borderRadius: 4, cursor: 'pointer' }}>
-            {showNotes ? '📝 Hide Notes' : '📝 Show Notes'}
-          </button>
           {isCommissioner && (
             <button onClick={resetDraft} style={{ padding: '4px 10px', fontSize: 12, background: 'none', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4, cursor: 'pointer' }}>
               Reset Draft
@@ -270,7 +267,12 @@ export default function DraftRoom() {
         {/* Item Pool */}
         {draft.status === 'ACTIVE' && (
           <section style={styles.panel}>
-            <h2 style={styles.panelTitle}>Available ({availableItems.length})</h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h2 style={{ ...styles.panelTitle, marginBottom: 0 }}>Available ({availableItems.length})</h2>
+              <button onClick={toggleNotes} style={{ padding: '3px 8px', fontSize: 12, background: 'none', border: '1px solid #d1d5db', color: '#6b7280', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
+                {showNotes ? 'Hide Notes' : 'Show Notes'}
+              </button>
+            </div>
 
             {hasBuckets && isMyTurn && enforceBuckets && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>

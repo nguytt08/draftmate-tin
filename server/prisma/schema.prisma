@@ -47,6 +47,8 @@ model League {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  joinCode  String? @unique
+
   settings DraftSettings?
   members  LeagueMember[]
   items    DraftItem[]
@@ -91,10 +93,11 @@ model LeagueMember {
   userId   String?
   user     User?  @relation(fields: [userId], references: [id])
 
-  inviteEmail   String
-  inviteToken   String?      @unique
-  inviteStatus  InviteStatus @default(PENDING)
-  displayName   String?
+  inviteEmail     String?
+  inviteToken     String?      @unique
+  inviteExpiresAt DateTime?
+  inviteStatus    InviteStatus @default(PENDING)
+  displayName     String?
   draftPosition Int?
   notifyEmail   Boolean      @default(true)
   notifyPhone   String?

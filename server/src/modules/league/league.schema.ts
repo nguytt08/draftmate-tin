@@ -18,10 +18,10 @@ export const draftSettingsSchema = z.object({
 });
 
 export const inviteMemberSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().optional(),
   displayName: z.string().min(1).max(100).optional(),
   notifyPhone: z.string().optional(),
-});
+}).refine((d) => d.email || d.displayName, { message: 'Provide at least a name or email' });
 
 export const setDraftPositionSchema = z.object({
   draftPosition: z.number().int().min(1),

@@ -23,7 +23,6 @@ export async function createLeague(commissionerId: string, input: CreateLeagueIn
       commissionerId,
       members: {
         create: {
-          inviteEmail: '',
           inviteStatus: 'ACCEPTED',
           userId: commissionerId,
           draftPosition: null,
@@ -106,34 +105,77 @@ export async function listMembers(leagueId: string) {
 export async function inviteMember(leagueId: string, commissionerId: string, input: InviteMemberInput) {
   const league = await prisma.league.findUniqueOrThrow({ where: { id: leagueId } });
 
-  const existing = await prisma.leagueMember.findFirst({
-    where: { leagueId, inviteEmail: input.email },
-  });
-  if (existing) throw new AppError(409, 'Member already invited');
+  if (input.email) {
+    const existing = await prisma.leagueMember.findFirst({
+      where: { leagueId, inviteEmail: input.email },
+    });
+    if (existing) throw new AppError(409, 'Member already invited');
+  }
 
-  const inviteToken = crypto.randomBytes(24).toString('hex');
+  const BASE62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const inviteToken = Array.from(crypto.randomBytes(12)).map((b) => BASE62[b % 62]).join('');
+  const inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
   const member = await prisma.leagueMember.create({
     data: {
       leagueId,
-      inviteEmail: input.email,
+      inviteEmail: input.email ?? null,
       displayName: input.displayName,
       inviteToken,
+      inviteExpiresAt,
       notifyPhone: input.notifyPhone,
     },
   });
 
-  await notificationService.notify({
-    toEmail: input.email,
-    toPhone: input.notifyPhone,
-    type: 'INVITE',
-    data: {
-      leagueName: league.name,
-      inviteToken,
-      commissionerName: (await prisma.user.findUniqueOrThrow({ where: { id: commissionerId } })).displayName,
-    },
-  });
+  if (input.email) {
+    await notificationService.notify({
+      toEmail: input.email,
+      toPhone: input.notifyPhone,
+      type: 'INVITE',
+      data: {
+        leagueName: league.name,
+        inviteToken,
+        commissionerName: (await prisma.user.findUniqueOrThrow({ where: { id: commissionerId } })).displayName,
+      },
+    });
+  }
 
   return member;
+}
+
+const BASE62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+export async function upsertJoinCode(leagueId: string) {
+  const joinCode = Array.from(crypto.randomBytes(8)).map((b) => BASE62[b % 62]).join('');
+  return prisma.league.update({ where: { id: leagueId }, data: { joinCode } });
+}
+
+export async function getLeagueByJoinCode(code: string) {
+  const league = await prisma.league.findUnique({
+    where: { joinCode: code },
+    select: {
+      id: true,
+      name: true,
+      members: {
+        where: { inviteStatus: 'PENDING' },
+        select: { id: true, displayName: true, inviteEmail: true },
+        orderBy: { draftPosition: 'asc' },
+      },
+    },
+  });
+  if (!league) throw new AppError(404, 'Join link not found or expired');
+  return league;
+}
+
+export async function revokeMember(leagueId: string, memberId: string) {
+  const member = await prisma.leagueMember.findUnique({ where: { id: memberId } });
+  if (!member || member.leagueId !== leagueId) throw new AppError(404, 'Member not found');
+  if (member.inviteStatus !== 'ACCEPTED') throw new AppError(409, 'Member has not accepted yet');
+  // Reset slot to claimable — clears the linked user and nulls the token so the old magic link can't re-auth
+  return prisma.leagueMember.update({
+    where: { id: member.id },
+    data: { userId: null, inviteStatus: 'PENDING', inviteToken: null },
+  });
 }
 
 export async function removeMember(leagueId: string, memberId: string) {
@@ -151,10 +193,13 @@ export async function updateMemberPosition(leagueId: string, memberId: string, d
 export async function randomizeDraftOrder(leagueId: string) {
   const members = await prisma.leagueMember.findMany({ where: { leagueId } });
   const shuffled = [...members].sort(() => Math.random() - 0.5);
-  await Promise.all(
-    shuffled.map((m, i) =>
-      prisma.leagueMember.update({ where: { id: m.id }, data: { draftPosition: i + 1 } }),
-    ),
+  // Clear all positions first to avoid @@unique([leagueId, draftPosition]) conflicts
+  await prisma.$transaction(
+    members.map((m) => prisma.leagueMember.update({ where: { id: m.id }, data: { draftPosition: null } })),
+  );
+  // Then assign new shuffled positions sequentially
+  await prisma.$transaction(
+    shuffled.map((m, i) => prisma.leagueMember.update({ where: { id: m.id }, data: { draftPosition: i + 1 } })),
   );
   return prisma.leagueMember.findMany({ where: { leagueId }, orderBy: { draftPosition: 'asc' } });
 }
