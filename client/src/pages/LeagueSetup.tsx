@@ -183,6 +183,11 @@ export default function LeagueSetup() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', id] }),
   });
 
+  const selfJoin = useMutation({
+    mutationFn: () => api.post(`/leagues/${id}/members/self`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', id] }),
+  });
+
   const addItem = useMutation({
     mutationFn: () => api.post(`/leagues/${id}/items`, { name: newItemName, bucket: newItemBucket || undefined }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['items', id] }); setNewItemName(''); },
@@ -216,6 +221,7 @@ export default function LeagueSetup() {
   });
 
   const isCommissioner = user?.id === league?.commissionerId;
+  const alreadyMember = (league?.members ?? []).some((m: any) => m.user?.id === user?.id);
 
   const acceptedMembers = (league?.members ?? []).filter((m: any) => m.inviteStatus === 'ACCEPTED');
   const suggestedRounds = acceptedMembers.length > 0 && items.length > 0
@@ -325,7 +331,14 @@ export default function LeagueSetup() {
 
           {/* Members */}
           <section style={styles.card}>
-            <h2 style={styles.sectionTitle}>Members ({league?.members?.length ?? 0})</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h2 style={{ ...styles.sectionTitle, marginBottom: 0 }}>Members ({league?.members?.length ?? 0})</h2>
+              {isCommissioner && !alreadyMember && (
+                <button style={styles.ghostBtn} onClick={() => selfJoin.mutate()} disabled={selfJoin.isPending}>
+                  + Join as drafter
+                </button>
+              )}
+            </div>
             {isCommissioner && (
               <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -400,11 +413,14 @@ export default function LeagueSetup() {
               </div>
             )}
             <ul style={{ listStyle: 'none' }}>
-              {(league?.members ?? []).map((m: { id: string; inviteEmail: string | null; displayName?: string | null; inviteStatus: string; draftPosition: number | null; user?: { displayName: string } }) => (
+              {(league?.members ?? []).map((m: { id: string; inviteEmail: string | null; displayName?: string | null; inviteStatus: string; draftPosition: number | null; user?: { id: string; displayName: string } }) => (
                 <li key={m.id} style={styles.memberRow}>
                   <span style={styles.position}>{m.draftPosition ?? '—'}</span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 500 }}>{m.user?.displayName ?? m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : 'Member')}</div>
+                    <div style={{ fontWeight: 500 }}>
+                      {m.user?.displayName ?? m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : 'Member')}
+                      {m.user?.id === user?.id && <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 6, fontWeight: 400 }}>(You)</span>}
+                    </div>
                     <div style={{ fontSize: 12, color: '#888' }}>{m.inviteEmail ?? 'No email'} · {m.inviteStatus}</div>
                   </div>
                   {isCommissioner && m.inviteStatus === 'ACCEPTED' && (

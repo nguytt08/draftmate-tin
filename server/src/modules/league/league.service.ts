@@ -189,6 +189,21 @@ export async function deleteLeague(leagueId: string) {
   await prisma.league.delete({ where: { id: leagueId } });
 }
 
+export async function selfJoin(leagueId: string, userId: string) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const inviteToken = Array.from(crypto.randomBytes(12)).map((b) => BASE62[b % 62]).join('');
+  return prisma.leagueMember.create({
+    data: {
+      leagueId,
+      userId,
+      displayName: user.displayName,
+      inviteStatus: 'ACCEPTED',
+      inviteToken,
+      notifyEmail: true,
+    },
+  });
+}
+
 export async function randomizeDraftOrder(leagueId: string) {
   const members = await prisma.leagueMember.findMany({ where: { leagueId } });
   const shuffled = [...members].sort(() => Math.random() - 0.5);
