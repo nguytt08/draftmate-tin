@@ -115,7 +115,7 @@ class NotificationService {
 
     const round = Math.ceil(pickNumber / 1); // will be filled by caller context
     await this.notify({
-      toEmail: member.notifyEmail ? (member.inviteEmail ?? undefined) : undefined,
+      toEmail: member.notifyEmail ? member.inviteEmail ?? undefined : undefined,
       toPhone: member.notifyPhone ?? member.user?.phone ?? undefined,
       type: 'YOUR_TURN',
       data: {
