@@ -185,7 +185,10 @@ export default function LeagueSetup() {
 
   const selfJoin = useMutation({
     mutationFn: () => api.post(`/leagues/${id}/members/self`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', id] }),
+    onSuccess: ({ data }) => {
+      if (data.inviteToken) localStorage.setItem('draftmate:recovery-token', data.inviteToken);
+      qc.invalidateQueries({ queryKey: ['league', id] });
+    },
   });
 
   const addItem = useMutation({
