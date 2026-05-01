@@ -15,8 +15,10 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 - **Inline item notes** — commissioner notes always visible below each item in the draft room; each drafter keeps private personal notes that appear inline and expand to edit on click; a "Hide Notes / Show Notes" toggle lives next to the Available count and persists across page loads
 - **Member display names** — commissioners enter a display name when inviting members; names appear throughout the draft board and pick history; email addresses are not exposed to other members
 - **Magic link invites** — per-member: commissioner invites with name + optional email; invitee gets a 12-char link that authenticates them instantly, no password required; link is persistent and works as a re-login key
-- **Draft join link** — one shareable link per league; anyone with it sees the list of unclaimed member slots and self-selects their identity; commissioner can regenerate the code to revoke old links
-- **Member revocation** — commissioner can revoke any claimed member slot, resetting it to claimable so someone else can join via the join link; old magic link is invalidated on revoke
+- **Draft join link** — one shareable link per league; anyone with it sees the list of unclaimed member slots and self-selects their identity; after claiming, the page shows the user their personal recovery link to bookmark; commissioner can regenerate the code to revoke old links
+- **Session recovery** — after joining via the draft link, users are shown their personal magic link to save; commissioner can retrieve any member's magic link from the member list meatball menu (⋯ → Copy Magic Link)
+- **Member management** — commissioner can delete any member slot (✕), revoke a claimed member's access (resets to claimable), or copy their personal magic link; all from the member list in league setup
+- **Commissioner opt-in** — commissioners are not automatically added as a league member; they add themselves via the invite form if they want to participate as a drafter
 - **Auto-save settings** — draft settings (rounds, timer, format, etc.) save automatically 800ms after any change; the Save button shows "Saving…" / "Saved ✓" feedback
 - **Dashboard navigation** — shows live draft status per league; active/paused drafts link to the draft room; completed drafts show a "View Results" button so the board stays accessible after the draft ends
 - **Draft reset** — commissioner can wipe all picks and restart from pick 1 without leaving the draft room
@@ -127,7 +129,7 @@ All routes are prefixed with `/api/v1`. Most require a `Bearer <accessToken>` he
 |---|---|
 | Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/invite/magic/:token`, `POST /auth/invite/accept/:token` (password flow), `POST /auth/join/:code/claim` |
 | Leagues | `POST /leagues`, `GET /leagues`, `GET /leagues/:id`, `PATCH /leagues/:id`, `PUT /leagues/:id/settings`, `GET /leagues/join/:code` (public) |
-| Members | `GET /leagues/:id/members`, `POST /leagues/:id/members/invite`, `POST /leagues/:id/members/randomize-order`, `PATCH /leagues/:id/members/:memberId`, `DELETE /leagues/:id/members/:memberId`, `POST /leagues/:id/members/:memberId/revoke`, `POST /leagues/:id/join-code` |
+| Members | `GET /leagues/:id/members`, `POST /leagues/:id/members/invite`, `POST /leagues/:id/members/randomize-order`, `PATCH /leagues/:id/members/:memberId`, `DELETE /leagues/:id/members/:memberId`, `POST /leagues/:id/members/:memberId/revoke`, `GET /leagues/:id/members/:memberId/magic-link` (commissioner), `POST /leagues/:id/join-code` |
 | Items | `GET /leagues/:id/items`, `POST /leagues/:id/items`, `POST /leagues/:id/items/bulk`, `PATCH /leagues/:id/items/:itemId`, `DELETE /leagues/:id/items/:itemId` |
 | Item Notes | `GET /leagues/:id/items/notes/mine` (bulk), `GET /leagues/:id/items/:itemId/notes`, `PUT /leagues/:id/items/:itemId/notes/mine` |
 | Draft | `POST /leagues/:id/draft/start`, `POST /leagues/:id/draft/pause`, `POST /leagues/:id/draft/resume`, `GET /leagues/:id/draft`, `GET /leagues/:id/draft/board`, `POST /leagues/:id/draft/picks`, `POST /leagues/:id/draft/reset` |

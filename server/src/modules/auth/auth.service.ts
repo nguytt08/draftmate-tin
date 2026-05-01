@@ -201,7 +201,7 @@ export async function joinClaim(code: string, memberId: string, displayName?: st
   });
 
   const accessToken = generateAccessToken(user.id, user.email, user.displayName);
-  return { accessToken, refreshToken: rawRefresh, user: { id: user.id, email: user.email, displayName: user.displayName } };
+  return { accessToken, refreshToken: rawRefresh, inviteToken: member.inviteToken, user: { id: user.id, email: user.email, displayName: user.displayName } };
 }
 
 export async function acceptInvite(token: string, password: string, displayName: string) {

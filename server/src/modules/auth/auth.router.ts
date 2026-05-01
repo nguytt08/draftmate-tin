@@ -11,7 +11,9 @@ const COOKIE_NAME = 'refresh_token';
 const cookieOptions = {
   httpOnly: true,
   secure: config.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
+  // cross-domain in production (railway.app frontend vs api subdomain) requires 'none';
+  // 'strict' blocks the HttpOnly cookie on cross-site requests
+  sameSite: (config.NODE_ENV === 'production' ? 'none' : 'strict') as 'none' | 'strict',
   maxAge: config.REFRESH_TOKEN_EXPIRES_DAYS * 24 * 60 * 60 * 1000,
 };
 
@@ -69,9 +71,9 @@ authRouter.post('/join/:code/claim', async (req: Request, res: Response, next: N
   try {
     const { memberId, displayName } = req.body;
     if (!memberId) { res.status(400).json({ error: 'memberId required' }); return; }
-    const { accessToken, refreshToken, user } = await authService.joinClaim(req.params.code, memberId, displayName);
+    const { accessToken, refreshToken, inviteToken, user } = await authService.joinClaim(req.params.code, memberId, displayName);
     res.cookie(COOKIE_NAME, refreshToken, cookieOptions);
-    res.json({ accessToken, user });
+    res.json({ accessToken, inviteToken, user });
   } catch (err) { next(err); }
 });
 

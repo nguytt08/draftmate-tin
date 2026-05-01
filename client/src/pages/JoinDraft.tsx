@@ -13,6 +13,7 @@ export default function JoinDraft() {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [magicLink, setMagicLink] = useState<string | null>(null);
   const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
 
@@ -38,13 +39,51 @@ export default function JoinDraft() {
         displayName: displayName.trim() || undefined,
       });
       setAuth(data.user, data.accessToken);
-      navigate('/');
+      if (data.inviteToken) {
+        setMagicLink(`${window.location.origin}/invite/${data.inviteToken}`);
+      } else {
+        navigate('/');
+      }
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
       setError(msg ?? 'Failed to join draft');
     } finally {
       setLoading(false);
     }
+  }
+
+  if (magicLink) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <h2 style={{ marginBottom: 8 }}>You're in!</h2>
+          <p style={{ color: '#374151', marginBottom: 16, lineHeight: 1.5 }}>
+            Save this link — it's how you get back into your session if you lose it.
+            There's no password, so bookmark it or send it to yourself.
+          </p>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <input
+              readOnly
+              value={magicLink}
+              onFocus={(e) => e.target.select()}
+              style={{ ...styles.input, flex: 1, color: '#374151', minWidth: 0 }}
+            />
+            <button
+              onClick={async () => {
+                try { await navigator.clipboard.writeText(magicLink); }
+                catch { prompt('Copy this link:', magicLink); }
+              }}
+              style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontSize: 14, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              Copy
+            </button>
+          </div>
+          <button style={{ ...styles.primaryBtn, background: '#16a34a' }} onClick={() => navigate('/')}>
+            Continue to Dashboard →
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (isLoading) return <div style={styles.center}>Loading…</div>;

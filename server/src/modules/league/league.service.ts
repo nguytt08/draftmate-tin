@@ -21,14 +21,6 @@ export async function createLeague(commissionerId: string, input: CreateLeagueIn
     data: {
       ...input,
       commissionerId,
-      members: {
-        create: {
-          inviteStatus: 'ACCEPTED',
-          userId: commissionerId,
-          draftPosition: null,
-          notifyEmail: true,
-        },
-      },
       settings: {
         create: {
           format: 'SNAKE',
@@ -39,13 +31,6 @@ export async function createLeague(commissionerId: string, input: CreateLeagueIn
       },
     },
     include: { members: true },
-  });
-
-  // Fix commissioner member's inviteEmail
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: commissionerId } });
-  await prisma.leagueMember.updateMany({
-    where: { leagueId: league.id, userId: commissionerId },
-    data: { inviteEmail: user.email },
   });
 
   return league;
@@ -62,7 +47,7 @@ export async function getLeague(leagueId: string) {
 
 export async function listLeagues(userId: string) {
   return prisma.league.findMany({
-    where: { members: { some: { userId } } },
+    where: { OR: [{ members: { some: { userId } } }, { commissionerId: userId }] },
     include: {
       settings: true,
       draft: true,
@@ -71,6 +56,16 @@ export async function listLeagues(userId: string) {
     },
     orderBy: { createdAt: 'desc' },
   });
+}
+
+export async function getMemberInviteToken(leagueId: string, memberId: string) {
+  const member = await prisma.leagueMember.findUnique({
+    where: { id: memberId },
+    select: { inviteToken: true, leagueId: true },
+  });
+  if (!member || member.leagueId !== leagueId) throw new AppError(404, 'Member not found');
+  if (!member.inviteToken) throw new AppError(400, 'This member has no personal invite link');
+  return member.inviteToken;
 }
 
 export async function updateLeague(leagueId: string, input: UpdateLeagueInput) {

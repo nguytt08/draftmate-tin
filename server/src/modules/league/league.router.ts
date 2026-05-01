@@ -84,6 +84,13 @@ leagueRouter.delete('/:id/members/:memberId', requireCommissioner(), async (req:
   } catch (err) { next(err); }
 });
 
+leagueRouter.get('/:id/members/:memberId/magic-link', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const inviteToken = await leagueService.getMemberInviteToken(req.params.id, req.params.memberId);
+    res.json({ inviteToken });
+  } catch (err) { next(err); }
+});
+
 leagueRouter.post('/:id/members/:memberId/revoke', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.json(await leagueService.revokeMember(req.params.id, req.params.memberId));

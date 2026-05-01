@@ -87,6 +87,22 @@ export default function LeagueSetup() {
   const [startError, setStartError] = useState<string | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [dragOverBucket, setDragOverBucket] = useState<string | null>(null);
+  const [showJoinMenu, setShowJoinMenu] = useState(false);
+  const [memberMenuId, setMemberMenuId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!showJoinMenu) return;
+    const close = () => setShowJoinMenu(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [showJoinMenu]);
+
+  useEffect(() => {
+    if (!memberMenuId) return;
+    const close = () => setMemberMenuId(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [memberMenuId]);
 
   useEffect(() => {
     if (league?.settings) {
@@ -159,6 +175,11 @@ export default function LeagueSetup() {
 
   const revokeMember = useMutation({
     mutationFn: (memberId: string) => api.post(`/leagues/${id}/members/${memberId}/revoke`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', id] }),
+  });
+
+  const deleteMember = useMutation({
+    mutationFn: (memberId: string) => api.delete(`/leagues/${id}/members/${memberId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', id] }),
   });
 
@@ -313,34 +334,69 @@ export default function LeagueSetup() {
                   <input style={{ ...styles.input, flex: 1 }} placeholder="Email (optional)" value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)} />
                 </div>
+                {/* TODO: re-enable phone field when SMS notifications are implemented */}
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <input style={{ ...styles.input, flex: 1 }} placeholder="Phone (optional)" value={invitePhone}
-                    onChange={(e) => setInvitePhone(e.target.value)} />
                   <button style={styles.primaryBtn} onClick={() => inviteMember.mutate()}>Invite</button>
                 </div>
               </div>
             )}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-              <button style={styles.ghostBtn} onClick={() => randomizeOrder.mutate()}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <button style={{ ...styles.ghostBtn, flex: 1 }} onClick={() => randomizeOrder.mutate()}>
                 Randomize Draft Order
               </button>
               {isCommissioner && (
-                <button
-                  style={styles.ghostBtn}
-                  onClick={async () => {
-                    const { data } = await api.post(`/leagues/${id}/join-code`);
-                    const link = `${window.location.origin}/join/${data.joinCode}`;
-                    navigator.clipboard.writeText(link);
-                    qc.invalidateQueries({ queryKey: ['league', id] });
-                  }}
-                >
-                  {league?.joinCode ? 'Copy Join Link' : 'Generate & Copy Join Link'}
-                </button>
+                <div style={{ position: 'relative', display: 'flex', flex: 1, gap: 0 }}>
+                  <button
+                    style={{ ...styles.ghostBtn, flex: 1 }}
+                    onClick={async () => {
+                      if (league?.joinCode) {
+                        await navigator.clipboard.writeText(`${window.location.origin}/join/${league.joinCode}`);
+                      } else {
+                        const { data } = await api.post(`/leagues/${id}/join-code`);
+                        await navigator.clipboard.writeText(`${window.location.origin}/join/${data.joinCode}`);
+                        qc.invalidateQueries({ queryKey: ['league', id] });
+                      }
+                    }}
+                  >
+                    {league?.joinCode ? 'Copy Join Link' : 'Generate Join Link'}
+                  </button>
+                  {league?.joinCode && (
+                    <button
+                      title="Join link options"
+                      style={{ ...styles.ghostBtn, padding: '4px 10px', borderLeft: 'none', borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+                      onClick={(e) => { e.stopPropagation(); setShowJoinMenu((m) => !m); }}
+                    >
+                      ⋯
+                    </button>
+                  )}
+                  {showJoinMenu && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 2, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.12)', zIndex: 20, minWidth: 180 }}>
+                      <button
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#374151' }}
+                        onClick={async () => {
+                          if (confirm('Regenerate join link? The old link will stop working.')) {
+                            const { data } = await api.post(`/leagues/${id}/join-code`);
+                            await navigator.clipboard.writeText(`${window.location.origin}/join/${data.joinCode}`);
+                            qc.invalidateQueries({ queryKey: ['league', id] });
+                          }
+                          setShowJoinMenu(false);
+                        }}
+                      >
+                        Regenerate Join Link
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
             {isCommissioner && league?.joinCode && (
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>
-                Join link: <code style={{ background: '#f3f4f6', padding: '1px 4px', borderRadius: 3 }}>{window.location.origin}/join/{league.joinCode}</code>
+              <div style={{ marginBottom: 10 }}>
+                <input
+                  readOnly
+                  value={`${window.location.origin}/join/${league.joinCode}`}
+                  onFocus={(e) => e.target.select()}
+                  style={{ ...styles.input, fontSize: 12, color: '#6b7280', width: '100%', cursor: 'text' }}
+                />
               </div>
             )}
             <ul style={{ listStyle: 'none' }}>
@@ -352,12 +408,55 @@ export default function LeagueSetup() {
                     <div style={{ fontSize: 12, color: '#888' }}>{m.inviteEmail ?? 'No email'} · {m.inviteStatus}</div>
                   </div>
                   {isCommissioner && m.inviteStatus === 'ACCEPTED' && (
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <button
+                        title="Member options"
+                        style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, padding: '2px 7px', cursor: 'pointer', color: '#6b7280' }}
+                        onClick={(e) => { e.stopPropagation(); setMemberMenuId((cur) => cur === m.id ? null : m.id); }}
+                      >
+                        ⋯
+                      </button>
+                      {memberMenuId === m.id && (
+                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 2, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.12)', zIndex: 20, minWidth: 180 }}>
+                          <button
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#374151' }}
+                            onClick={async () => {
+                              setMemberMenuId(null);
+                              try {
+                                const { data } = await api.get(`/leagues/${id}/members/${m.id}/magic-link`);
+                                const link = `${window.location.origin}/invite/${data.inviteToken}`;
+                                try {
+                                  await navigator.clipboard.writeText(link);
+                                } catch {
+                                  prompt('Copy this magic link:', link);
+                                }
+                              } catch (err: any) {
+                                alert(err?.response?.data?.error ?? 'Could not get magic link');
+                              }
+                            }}
+                          >
+                            Copy Magic Link
+                          </button>
+                          <button
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#dc2626', borderTop: '1px solid #f3f4f6' }}
+                            onClick={() => {
+                              if (confirm('Revoke this member\'s claim? The slot becomes claimable again.')) revokeMember.mutate(m.id);
+                              setMemberMenuId(null);
+                            }}
+                          >
+                            Revoke Access
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {isCommissioner && (
                     <button
-                      title="Revoke claim — resets this slot to claimable so someone else can join"
-                      onClick={() => { if (confirm('Revoke this member\'s claim? They will be signed out and the slot becomes claimable again.')) revokeMember.mutate(m.id); }}
-                      style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 4, fontSize: 11, padding: '2px 7px', cursor: 'pointer', color: '#dc2626', flexShrink: 0 }}
+                      title="Remove member"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 16, padding: '0 4px', flexShrink: 0, lineHeight: 1 }}
+                      onClick={() => { if (confirm('Remove this member from the league?')) deleteMember.mutate(m.id); }}
                     >
-                      Revoke
+                      ✕
                     </button>
                   )}
                 </li>
@@ -381,6 +480,12 @@ export default function LeagueSetup() {
                     {namedBuckets.map((b) => <option key={b} value={b} />)}
                   </datalist>
                   <button style={styles.primaryBtn} onClick={() => addItem.mutate()}>Add</button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 10px' }}>
+                  <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                  <span style={{ fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap' }}>Bulk add</span>
+                  <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
                 </div>
 
                 <div style={{ marginBottom: 12 }}>
