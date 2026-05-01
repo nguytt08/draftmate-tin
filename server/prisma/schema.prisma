@@ -167,6 +167,8 @@ model Draft {
   currentRound    Int         @default(1)
   currentMemberId String?
 
+  commissionerPickRequired Boolean @default(false)
+
   startedAt   DateTime?
   completedAt DateTime?
   createdAt   DateTime  @default(now())

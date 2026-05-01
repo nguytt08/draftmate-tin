@@ -55,6 +55,10 @@ export function createPickTimerWorker(io: import('socket.io').Server) {
               where: { id: timerJob.id },
               data: { status: 'FIRED' },
             });
+            await tx.draft.update({
+              where: { id: draftId },
+              data: { commissionerPickRequired: true },
+            });
             return { commissionerPickRequired: true } as const;
           }
 

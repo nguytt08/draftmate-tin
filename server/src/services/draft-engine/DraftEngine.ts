@@ -187,6 +187,7 @@ export class DraftEngine {
               currentMemberId: nextMemberId,
               status: complete ? 'COMPLETED' : 'ACTIVE',
               completedAt: complete ? new Date() : null,
+              commissionerPickRequired: false,
             },
           });
 
@@ -319,6 +320,7 @@ export class DraftEngine {
         currentPickNumber: draft.currentPickNumber,
         currentRound: draft.currentRound,
         currentMemberId: draft.currentMemberId,
+        commissionerPickRequired: draft.commissionerPickRequired,
         timerEndsAt: activeTimer?.scheduledFor?.toISOString() ?? null,
         startedAt: draft.startedAt?.toISOString() ?? null,
         completedAt: draft.completedAt?.toISOString() ?? null,

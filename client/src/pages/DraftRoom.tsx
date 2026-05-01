@@ -13,7 +13,7 @@ function memberDisplay(m: { user?: { displayName: string } | null; displayName?:
 }
 interface Pick { id: string; pickNumber: number; round: number; positionInRound: number; memberId: string; itemId: string; isAutoPick: boolean; isOverridePick: boolean; item: DraftItem; member: Member }
 interface DraftState {
-  draft: { id: string; status: string; currentPickNumber: number; currentRound: number; currentMemberId: string | null; timerEndsAt: string | null; completedAt: string | null };
+  draft: { id: string; status: string; currentPickNumber: number; currentRound: number; currentMemberId: string | null; timerEndsAt: string | null; completedAt: string | null; commissionerPickRequired: boolean };
   picks: Pick[];
   availableItems: DraftItem[];
   members: Member[];
@@ -271,7 +271,12 @@ export default function DraftRoom() {
           It's your pick! — {timerDisplay} remaining
         </div>
       )}
-      {!isMyTurn && draft.status === 'ACTIVE' && currentMember && (
+      {isCommissioner && !isMyTurn && draft.status === 'ACTIVE' && draft.commissionerPickRequired && currentMember && (
+        <div style={styles.commissionerAlert}>
+          ⏱ Pick timer expired for <strong>{memberDisplay(currentMember)}</strong> — use the Override button to make their pick.
+        </div>
+      )}
+      {!isMyTurn && draft.status === 'ACTIVE' && currentMember && !(isCommissioner && draft.commissionerPickRequired) && (
         <div style={styles.waitingBanner}>
           Waiting for <strong>{memberDisplay(currentMember)}</strong>...
         </div>
@@ -418,6 +423,7 @@ const styles: Record<string, React.CSSProperties> = {
   backBtn: { background: 'none', border: 'none', color: '#93c5fd', fontSize: 14, fontWeight: 500 },
   onClock: { background: '#dc2626', color: '#fff', textAlign: 'center', padding: '10px', fontWeight: 700, fontSize: 15 },
   waitingBanner: { background: '#fef3c7', textAlign: 'center', padding: '8px', fontSize: 14, color: '#92400e' },
+  commissionerAlert: { background: '#fef9c3', border: '1px solid #fde68a', textAlign: 'center', padding: '10px 16px', fontSize: 14, color: '#92400e', fontWeight: 600 },
   body: { display: 'flex', gap: 12, padding: 16, flex: 1, alignItems: 'flex-start', overflowX: 'auto' },
   panel: { background: '#fff', borderRadius: 8, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', minWidth: 220, flex: 1 },
   panelTitle: { fontSize: 15, fontWeight: 700, marginBottom: 12 },

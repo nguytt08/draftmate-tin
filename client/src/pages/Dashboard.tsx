@@ -9,7 +9,7 @@ interface League {
   name: string;
   description?: string;
   commissionerId: string;
-  draft?: { id: string; status: string; currentMemberId: string | null } | null;
+  draft?: { id: string; status: string; currentMemberId: string | null; commissionerPickRequired: boolean } | null;
   members?: { id: string }[];
   _count?: { members: number; items: number };
 }
@@ -117,6 +117,9 @@ export default function Dashboard() {
                 </div>
                 {isMyTurn && (
                   <p style={{ color: '#15803d', fontSize: 13, fontWeight: 600, margin: '6px 0 0' }}>Your turn to pick!</p>
+                )}
+                {isCommissioner && draftActive && league.draft?.commissionerPickRequired && (
+                  <p style={{ color: '#92400e', fontSize: 13, fontWeight: 600, margin: '6px 0 0' }}>⏱ Pick needed — timer expired</p>
                 )}
                 <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {(draftActive || draftPaused) && (
