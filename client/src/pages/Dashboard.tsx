@@ -38,6 +38,7 @@ export default function Dashboard() {
 
   async function logout() {
     await api.post('/auth/logout');
+    localStorage.removeItem('draftmate:recovery-token');
     clearAuth();
     navigate('/login');
   }

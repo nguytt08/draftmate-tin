@@ -363,11 +363,19 @@ export default function LeagueSetup() {
                     style={{ ...styles.ghostBtn, flex: 1 }}
                     onClick={async () => {
                       if (league?.joinCode) {
-                        await navigator.clipboard.writeText(`${window.location.origin}/join/${league.joinCode}`);
+                        const link = `${window.location.origin}/join/${league.joinCode}`;
+                        try { await navigator.clipboard.writeText(link); }
+                        catch { prompt('Copy this join link:', link); }
                       } else {
-                        const { data } = await api.post(`/leagues/${id}/join-code`);
-                        await navigator.clipboard.writeText(`${window.location.origin}/join/${data.joinCode}`);
-                        qc.invalidateQueries({ queryKey: ['league', id] });
+                        try {
+                          const { data } = await api.post(`/leagues/${id}/join-code`);
+                          qc.invalidateQueries({ queryKey: ['league', id] });
+                          const link = `${window.location.origin}/join/${data.joinCode}`;
+                          try { await navigator.clipboard.writeText(link); }
+                          catch { prompt('Copy this join link:', link); }
+                        } catch (err: any) {
+                          alert(err?.response?.data?.error ?? 'Failed to generate join link');
+                        }
                       }
                     }}
                   >

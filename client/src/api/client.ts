@@ -22,6 +22,18 @@ api.interceptors.response.use(
         original.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(original);
       } catch {
+        // Cookie refresh failed — try stored invite token (Safari cross-domain cookie fallback)
+        const recoveryToken = localStorage.getItem('draftmate:recovery-token');
+        if (recoveryToken) {
+          try {
+            const { data } = await axios.post(`${apiOrigin}/api/v1/auth/invite/magic/${recoveryToken}`, {}, { withCredentials: true });
+            useAuthStore.getState().setAuth(data.user, data.accessToken);
+            original.headers.Authorization = `Bearer ${data.accessToken}`;
+            return api(original);
+          } catch {
+            localStorage.removeItem('draftmate:recovery-token');
+          }
+        }
         useAuthStore.getState().clearAuth();
       }
     }

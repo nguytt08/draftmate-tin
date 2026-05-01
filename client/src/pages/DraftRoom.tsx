@@ -121,6 +121,20 @@ export default function DraftRoom() {
     }
   }
 
+  async function submitPickOverride(itemId: string, forMemberName: string) {
+    if (!leagueId || submitting) return;
+    if (!window.confirm(`Pick this on behalf of ${forMemberName}?`)) return;
+    setSubmitting(true);
+    try {
+      await api.post(`/leagues/${leagueId}/draft/picks/override`, { itemId });
+      await fetchState();
+    } catch (err: unknown) {
+      alert((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Override failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function resetDraft() {
     if (!leagueId) return;
     if (!window.confirm('Reset the draft? All picks will be deleted and the draft restarts from pick 1.')) return;
@@ -225,6 +239,9 @@ export default function DraftRoom() {
         </div>
         {isMyTurn && (
           <button style={styles.pickBtn} disabled={submitting || blocked} onClick={() => submitPick(item.id)}>Pick</button>
+        )}
+        {isCommissioner && !isMyTurn && draft.status === 'ACTIVE' && draft.currentMemberId && (
+          <button style={styles.overrideBtn} disabled={submitting} onClick={() => submitPickOverride(item.id, memberDisplay(currentMember!))}>Override</button>
         )}
       </li>
     );
@@ -408,6 +425,7 @@ const styles: Record<string, React.CSSProperties> = {
   itemList: { listStyle: 'none', maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' },
   itemRow: { display: 'flex', alignItems: 'flex-start', padding: '7px 0', borderBottom: '1px solid #f0f0f0', gap: 8 },
   pickBtn: { padding: '4px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 600, fontSize: 13, flexShrink: 0 },
+  overrideBtn: { padding: '4px 10px', background: 'none', color: '#9ca3af', border: '1px solid #d1d5db', borderRadius: 4, fontWeight: 500, fontSize: 12, flexShrink: 0, cursor: 'pointer' },
   commNote: { fontSize: 12, color: '#6b7280', fontStyle: 'italic', marginTop: 3 },
   myNote: { fontSize: 12, color: '#2563eb', fontStyle: 'italic', marginTop: 3, cursor: 'pointer' },
   addNote: { fontSize: 12, color: '#d1d5db', marginTop: 3, cursor: 'pointer' },

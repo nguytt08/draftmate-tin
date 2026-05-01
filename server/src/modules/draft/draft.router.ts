@@ -55,6 +55,17 @@ draftRouter.get('/:id/draft/board', async (req: Request, res: Response, next: Ne
   } catch (err) { next(err); }
 });
 
+// Commissioner override: pick on behalf of whoever's current member
+draftRouter.post('/:id/draft/picks/override', requireCommissioner(), validate(submitPickSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const draft = await prisma.draft.findUnique({ where: { leagueId: req.params.id } });
+    if (!draft) throw new AppError(404, 'Draft not found');
+    if (!draft.currentMemberId) throw new AppError(400, 'No active pick in progress');
+    const state = await getEngine().submitPick(draft.id, draft.currentMemberId, req.body.itemId);
+    res.json(state);
+  } catch (err) { next(err); }
+});
+
 // Submit a pick
 draftRouter.post('/:id/draft/picks', validate(submitPickSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {

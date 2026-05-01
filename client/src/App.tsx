@@ -20,10 +20,27 @@ export default function App() {
   const setAuth = useAuthStore((s) => s.setAuth);
 
   useEffect(() => {
-    api.post('/auth/refresh')
-      .then(({ data }) => setAuth(data.user, data.accessToken))
-      .catch(() => {})
-      .finally(() => setInitializing(false));
+    async function init() {
+      // 1. Try cookie-based refresh (works on Chrome/Firefox; blocked by Safari ITP cross-domain)
+      try {
+        const { data } = await api.post('/auth/refresh');
+        setAuth(data.user, data.accessToken);
+        return;
+      } catch {}
+
+      // 2. Fallback: use stored invite token for join-link users whose cookie is blocked
+      const recoveryToken = localStorage.getItem('draftmate:recovery-token');
+      if (recoveryToken) {
+        try {
+          const { data } = await api.post(`/auth/invite/magic/${recoveryToken}`);
+          setAuth(data.user, data.accessToken);
+          return;
+        } catch {
+          localStorage.removeItem('draftmate:recovery-token');
+        }
+      }
+    }
+    init().finally(() => setInitializing(false));
   }, [setAuth]);
 
   if (initializing) return null;

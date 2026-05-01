@@ -40,6 +40,8 @@ export default function JoinDraft() {
       });
       setAuth(data.user, data.accessToken);
       if (data.inviteToken) {
+        // Store as fallback re-auth for browsers that block cross-domain cookies (Safari ITP)
+        localStorage.setItem('draftmate:recovery-token', data.inviteToken);
         setMagicLink(`${window.location.origin}/invite/${data.inviteToken}`);
       } else {
         navigate('/');
