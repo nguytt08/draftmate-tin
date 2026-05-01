@@ -21,6 +21,7 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 - **Commissioner opt-in** — commissioners are not automatically added as a league member; they add themselves via the invite form if they want to participate as a drafter
 - **Auto-save settings** — draft settings (rounds, timer, format, etc.) save automatically 800ms after any change; the Save button shows "Saving…" / "Saved ✓" feedback
 - **Dashboard navigation** — shows live draft status per league; active/paused drafts link to the draft room; completed drafts show a "View Results" button so the board stays accessible after the draft ends
+- **Delete league** — commissioner can permanently delete a league from the dashboard (✕ button on the card); confirmation dialog required; all members, items, picks, and draft data are removed
 - **Draft reset** — commissioner can wipe all picks and restart from pick 1 without leaving the draft room
 - **Secure auth** — JWT access tokens (15 min, auto-refreshed silently) + HttpOnly refresh tokens (30-day rotation)
 
@@ -128,7 +129,7 @@ All routes are prefixed with `/api/v1`. Most require a `Bearer <accessToken>` he
 | Group | Key Endpoints |
 |---|---|
 | Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/invite/magic/:token`, `POST /auth/invite/accept/:token` (password flow), `POST /auth/join/:code/claim` |
-| Leagues | `POST /leagues`, `GET /leagues`, `GET /leagues/:id`, `PATCH /leagues/:id`, `PUT /leagues/:id/settings`, `GET /leagues/join/:code` (public) |
+| Leagues | `POST /leagues`, `GET /leagues`, `GET /leagues/:id`, `PATCH /leagues/:id`, `DELETE /leagues/:id`, `PUT /leagues/:id/settings`, `GET /leagues/join/:code` (public) |
 | Members | `GET /leagues/:id/members`, `POST /leagues/:id/members/invite`, `POST /leagues/:id/members/randomize-order`, `PATCH /leagues/:id/members/:memberId`, `DELETE /leagues/:id/members/:memberId`, `POST /leagues/:id/members/:memberId/revoke`, `GET /leagues/:id/members/:memberId/magic-link` (commissioner), `POST /leagues/:id/join-code` |
 | Items | `GET /leagues/:id/items`, `POST /leagues/:id/items`, `POST /leagues/:id/items/bulk`, `PATCH /leagues/:id/items/:itemId`, `DELETE /leagues/:id/items/:itemId` |
 | Item Notes | `GET /leagues/:id/items/notes/mine` (bulk), `GET /leagues/:id/items/:itemId/notes`, `PUT /leagues/:id/items/:itemId/notes/mine` |
