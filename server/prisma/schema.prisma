@@ -199,6 +199,7 @@ model Pick {
   round           Int
   positionInRound Int
   isAutoPick      Boolean  @default(false)
+  isOverridePick  Boolean  @default(false)
   pickedAt        DateTime @default(now())
 
   @@unique([draftId, pickNumber])

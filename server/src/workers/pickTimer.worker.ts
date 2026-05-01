@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { redis } from '../redis';
 import { prisma } from '../db';
 import { createDraftStrategy } from '../services/draft-engine/DraftStrategyFactory';
+import { DraftEngine } from '../services/draft-engine/DraftEngine';
 import { notificationService } from '../services/notification/notification.service';
 import { timerService, type PickTimerJobData } from '../services/timer/timer.service';
 
@@ -115,7 +116,11 @@ export function createPickTimerWorker(io: import('socket.io').Server) {
 
       const { pick, complete, nextMemberId, nextPickNumber, settings, league } = result;
 
-      io.to(`draft:${draftId}`).emit('draft:auto_pick', {
+      const engine = new DraftEngine(prisma, io);
+      const state = await engine.getDraftState(draftId);
+      io.of('/draft').to(`draft:${draftId}`).emit('draft:state', state);
+
+      io.of('/draft').to(`draft:${draftId}`).emit('draft:auto_pick', {
         pick,
         reason: 'timer_expired',
         nextMemberId,
@@ -124,7 +129,7 @@ export function createPickTimerWorker(io: import('socket.io').Server) {
       });
 
       if (complete) {
-        io.to(`draft:${draftId}`).emit('draft:completed', { completedAt: new Date().toISOString() });
+        io.of('/draft').to(`draft:${draftId}`).emit('draft:completed', { completedAt: new Date().toISOString() });
       } else if (nextMemberId) {
         const timerEndsAt = new Date(Date.now() + settings.pickTimerSeconds * 1000);
         await timerService.schedulePickTimer(draftId, nextPickNumber, settings.pickTimerSeconds);

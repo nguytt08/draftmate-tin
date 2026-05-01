@@ -79,7 +79,7 @@ export class DraftEngine {
 
     // Emit to room
     const state = await this.getDraftState(draft.id);
-    this.io.to(`draft:${draft.id}`).emit('draft:state', state);
+    this.io.of('/draft').to(`draft:${draft.id}`).emit('draft:state', state);
 
     // Schedule timer (imported lazily to avoid circular deps)
     const { timerService } = await import('../timer/timer.service');
@@ -92,7 +92,7 @@ export class DraftEngine {
     return draft;
   }
 
-  async submitPick(draftId: string, memberId: string, itemId: string) {
+  async submitPick(draftId: string, memberId: string, itemId: string, isOverridePick = false) {
     let result: {
       pick: { id: string; pickNumber: number; [key: string]: unknown };
       complete: boolean;
@@ -162,6 +162,7 @@ export class DraftEngine {
               round: strategy.getRoundForPick(currentPickNumber, members.length),
               positionInRound: strategy.getPositionInRound(currentPickNumber, members.length),
               isAutoPick: false,
+              isOverridePick,
             },
           });
 
@@ -211,7 +212,8 @@ export class DraftEngine {
       ? null
       : new Date(Date.now() + (result.settings.pickTimerSeconds as number) * 1000);
 
-    this.io.to(`draft:${draftId}`).emit('draft:pick_made', {
+    this.io.of('/draft').to(`draft:${draftId}`).emit('draft:state', state);
+    this.io.of('/draft').to(`draft:${draftId}`).emit('draft:pick_made', {
       pick: result.pick,
       nextMemberId: result.nextMemberId,
       nextPickNumber: result.nextPickNumber,
@@ -220,7 +222,7 @@ export class DraftEngine {
     });
 
     if (result.complete) {
-      this.io.to(`draft:${draftId}`).emit('draft:completed', { completedAt: new Date().toISOString() });
+      this.io.of('/draft').to(`draft:${draftId}`).emit('draft:completed', { completedAt: new Date().toISOString() });
     } else {
       await timerService.schedulePickTimer(draftId, result.nextPickNumber, result.settings.pickTimerSeconds as number);
 
@@ -250,7 +252,9 @@ export class DraftEngine {
     const { timerService } = await import('../timer/timer.service');
     await timerService.cancelPickTimer(draft.id, draft.currentPickNumber);
 
-    this.io.to(`draft:${draft.id}`).emit('draft:paused', { pausedAt: new Date().toISOString() });
+    const state = await this.getDraftState(draft.id);
+    this.io.of('/draft').to(`draft:${draft.id}`).emit('draft:state', state);
+    this.io.of('/draft').to(`draft:${draft.id}`).emit('draft:paused', { pausedAt: new Date().toISOString() });
     return draft;
   }
 
@@ -271,7 +275,9 @@ export class DraftEngine {
     const { timerService } = await import('../timer/timer.service');
     await timerService.schedulePickTimer(draft.id, draft.currentPickNumber, timerSeconds);
 
-    this.io.to(`draft:${draft.id}`).emit('draft:resumed', {
+    const state = await this.getDraftState(draft.id);
+    this.io.of('/draft').to(`draft:${draft.id}`).emit('draft:state', state);
+    this.io.of('/draft').to(`draft:${draft.id}`).emit('draft:resumed', {
       resumedAt: new Date().toISOString(),
       timerEndsAt: timerEndsAt.toISOString(),
     });

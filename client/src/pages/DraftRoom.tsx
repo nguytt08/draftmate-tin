@@ -11,7 +11,7 @@ interface Member { id: string; inviteEmail: string | null; displayName?: string 
 function memberDisplay(m: { user?: { displayName: string } | null; displayName?: string | null; inviteEmail: string | null }): string {
   return m.user?.displayName ?? m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : 'Member');
 }
-interface Pick { id: string; pickNumber: number; round: number; positionInRound: number; memberId: string; itemId: string; isAutoPick: boolean; item: DraftItem; member: Member }
+interface Pick { id: string; pickNumber: number; round: number; positionInRound: number; memberId: string; itemId: string; isAutoPick: boolean; isOverridePick: boolean; item: DraftItem; member: Member }
 interface DraftState {
   draft: { id: string; status: string; currentPickNumber: number; currentRound: number; currentMemberId: string | null; timerEndsAt: string | null; completedAt: string | null };
   picks: Pick[];
@@ -34,12 +34,12 @@ export default function DraftRoom() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
 
-  const { data: leagueMeta } = useQuery<{ id: string; commissionerId: string } | null>({
+  const { data: leagueMeta } = useQuery<{ id: string; commissionerId: string; name: string } | null>({
     queryKey: ['draft-league', draftId],
     queryFn: async () => {
       const { data } = await api.get(`/leagues`);
       const league = data.find((l: { draft?: { id: string } }) => l.draft?.id === draftId);
-      return league ? { id: league.id, commissionerId: league.commissionerId } : null;
+      return league ? { id: league.id, commissionerId: league.commissionerId, name: league.name } : null;
     },
   });
   const leagueId = leagueMeta?.id;
@@ -71,25 +71,15 @@ export default function DraftRoom() {
     draftSocket.emit('draft:join', { draftId });
 
     draftSocket.on('draft:state', (state: DraftState) => setLocalState(state));
-    draftSocket.on('draft:pick_made', () => fetchState());
-    draftSocket.on('draft:auto_pick', () => fetchState());
-    draftSocket.on('draft:completed', () => fetchState());
-    draftSocket.on('draft:paused', () => fetchState());
-    draftSocket.on('draft:resumed', () => fetchState());
     draftSocket.on('presence:update', ({ onlineMembers }: { onlineMembers: string[] }) => setOnlineUsers(onlineMembers));
 
     return () => {
       draftSocket.emit('draft:leave', { draftId });
       draftSocket.off('draft:state');
-      draftSocket.off('draft:pick_made');
-      draftSocket.off('draft:auto_pick');
-      draftSocket.off('draft:completed');
-      draftSocket.off('draft:paused');
-      draftSocket.off('draft:resumed');
       draftSocket.off('presence:update');
       draftSocket.disconnect();
     };
-  }, [draftId, user, fetchState]);
+  }, [draftId, user]);
 
   // Timer countdown
   useEffect(() => {
@@ -179,11 +169,17 @@ export default function DraftRoom() {
   const enforceBuckets = settings?.enforceBucketPicking ?? false;
   const myPicks = picks.filter((p) => p.memberId === myMember?.id);
   const myUsedBuckets = new Set(myPicks.map((p) => p.item.bucket).filter(Boolean) as string[]);
+  const currentMemberPicks = picks.filter((p) => p.memberId === draft.currentMemberId);
+  const currentMemberUsedBuckets = new Set(currentMemberPicks.map((p) => p.item.bucket).filter(Boolean) as string[]);
   const namedBuckets = [...new Set(availableItems.map((i) => i.bucket).filter(Boolean) as string[])].sort();
   const hasBuckets = namedBuckets.length > 0;
 
   function isBucketBlocked(bucket: string | null | undefined) {
     return enforceBuckets && isMyTurn && !!bucket && myUsedBuckets.has(bucket);
+  }
+
+  function isOverrideBlocked(bucket: string | null | undefined) {
+    return enforceBuckets && isCommissioner && !isMyTurn && !!bucket && currentMemberUsedBuckets.has(bucket);
   }
 
   const groupedItems = hasBuckets
@@ -202,7 +198,7 @@ export default function DraftRoom() {
     if (pickGrid[p.round]) pickGrid[p.round][p.memberId] = p;
   }
 
-  function renderItem(item: DraftItem, blocked = false) {
+  function renderItem(item: DraftItem, blocked = false, overrideBlocked = false) {
     const commNote = item.commissionerNotes;
     const myNote = myNotes[item.id] ?? '';
     const isEditing = editingNoteId === item.id;
@@ -241,7 +237,7 @@ export default function DraftRoom() {
           <button style={styles.pickBtn} disabled={submitting || blocked} onClick={() => submitPick(item.id)}>Pick</button>
         )}
         {isCommissioner && !isMyTurn && draft.status === 'ACTIVE' && draft.currentMemberId && (
-          <button style={styles.overrideBtn} disabled={submitting} onClick={() => submitPickOverride(item.id, memberDisplay(currentMember!))}>Override</button>
+          <button style={styles.overrideBtn} disabled={submitting || overrideBlocked} onClick={() => submitPickOverride(item.id, memberDisplay(currentMember!))}>Override</button>
         )}
       </li>
     );
@@ -253,6 +249,7 @@ export default function DraftRoom() {
       <header style={styles.header}>
         <button onClick={() => navigate('/')} style={styles.backBtn}>← Dashboard</button>
         <div style={{ flex: 1, textAlign: 'center' }}>
+          {leagueMeta?.name && <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 2 }}>{leagueMeta.name}</div>}
           <span style={{ fontWeight: 700 }}>Round {draft.currentRound} · Pick {draft.currentPickNumber}</span>
           {draft.status === 'COMPLETED' && <span style={{ ...styles.badge, ...styles.badgeGreen, marginLeft: 8 }}>Complete</span>}
           {draft.status === 'PAUSED' && <span style={{ ...styles.badge, ...styles.badgeYellow, marginLeft: 8 }}>Paused</span>}
@@ -317,15 +314,16 @@ export default function DraftRoom() {
               <div style={{ overflowY: 'auto', maxHeight: 480 }}>
                 {namedBuckets.map((bucket) => {
                   const blocked = isBucketBlocked(bucket);
+                  const overrideBlocked = isOverrideBlocked(bucket);
                   const bucketItems = groupedItems[bucket] ?? [];
                   if (bucketItems.length === 0) return null;
                   return (
-                    <div key={bucket} style={{ marginBottom: 12, opacity: blocked ? 0.45 : 1 }}>
+                    <div key={bucket} style={{ marginBottom: 12, opacity: (blocked || overrideBlocked) ? 0.45 : 1 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
-                        {bucket} {blocked ? '(already picked)' : `(${bucketItems.length})`}
+                        {bucket} {(blocked || overrideBlocked) ? '(already picked)' : `(${bucketItems.length})`}
                       </div>
                       <ul style={{ ...styles.itemList, margin: 0 }}>
-                        {bucketItems.map((item) => renderItem(item, blocked))}
+                        {bucketItems.map((item) => renderItem(item, blocked, overrideBlocked))}
                       </ul>
                     </div>
                   );
@@ -336,7 +334,7 @@ export default function DraftRoom() {
                       Other ({groupedItems[''].length})
                     </div>
                     <ul style={{ ...styles.itemList, margin: 0 }}>
-                      {groupedItems[''].map((item) => renderItem(item, false))}
+                      {groupedItems[''].map((item) => renderItem(item, false, false))}
                     </ul>
                   </div>
                 )}
@@ -373,9 +371,10 @@ export default function DraftRoom() {
                     return (
                       <td key={m.id} style={{ ...styles.td, ...(pick ? {} : styles.tdEmpty) }}>
                         {pick ? (
-                          <span title={pick.isAutoPick ? 'Auto-picked' : ''} style={{ fontSize: 13 }}>
+                          <span title={pick.isAutoPick ? 'Auto-picked' : pick.isOverridePick ? 'Commissioner override' : ''} style={{ fontSize: 13 }}>
                             {pick.item.name}
                             {pick.isAutoPick && <span style={styles.autoPick}> ★</span>}
+                            {pick.isOverridePick && <span style={styles.overridePick}> 👑</span>}
                           </span>
                         ) : (
                           round === draft.currentRound && m.id === draft.currentMemberId
@@ -401,6 +400,7 @@ export default function DraftRoom() {
                 <div style={{ color: '#888', fontSize: 12 }}>
                   {memberDisplay(p.member)} · R{p.round}.{p.positionInRound}
                   {p.isAutoPick && ' (auto)'}
+                  {p.isOverridePick && ' (commissioner pick)'}
                 </div>
               </li>
             ))}
@@ -437,6 +437,7 @@ const styles: Record<string, React.CSSProperties> = {
   tdEmpty: { background: '#fafafa' },
   onClock_small: { color: '#dc2626', fontWeight: 600 },
   autoPick: { color: '#f59e0b' },
+  overridePick: { color: '#6b7280' },
   badge: { display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 },
   badgeGreen: { background: '#dcfce7', color: '#15803d' },
   badgeYellow: { background: '#fef3c7', color: '#92400e' },

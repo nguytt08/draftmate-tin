@@ -61,7 +61,7 @@ draftRouter.post('/:id/draft/picks/override', requireCommissioner(), validate(su
     const draft = await prisma.draft.findUnique({ where: { leagueId: req.params.id } });
     if (!draft) throw new AppError(404, 'Draft not found');
     if (!draft.currentMemberId) throw new AppError(400, 'No active pick in progress');
-    const state = await getEngine().submitPick(draft.id, draft.currentMemberId, req.body.itemId);
+    const state = await getEngine().submitPick(draft.id, draft.currentMemberId, req.body.itemId, true);
     res.json(state);
   } catch (err) { next(err); }
 });
