@@ -66,6 +66,7 @@ model DraftSettings {
   autoPick              AutoPickBehavior @default(COMMISSIONER_PICK)
   allowTrading          Boolean          @default(false)
   enforceBucketPicking  Boolean          @default(false)
+  allowSelfReclaim      Boolean          @default(false)
   extendedConfig        Json?
 
   createdAt DateTime @default(now())

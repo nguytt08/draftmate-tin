@@ -18,7 +18,7 @@ function getEngine() {
 // Start draft
 draftRouter.post('/:id/draft/start', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const draft = await getEngine().startDraft(req.params.id, req.user!.sub);
+    const draft = await getEngine().startDraft(req.params.id, req.user!.sub, req.body.force === true);
     res.json(draft);
   } catch (err) { next(err); }
 });

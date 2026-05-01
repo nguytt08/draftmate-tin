@@ -172,7 +172,10 @@ export async function magicLinkAccept(token: string, displayName?: string) {
 }
 
 export async function joinClaim(code: string, memberId: string, displayName?: string) {
-  const league = await prisma.league.findUnique({ where: { joinCode: code } });
+  const league = await prisma.league.findUnique({
+    where: { joinCode: code },
+    include: { settings: { select: { allowSelfReclaim: true } } },
+  });
   if (!league) throw new AppError(404, 'Join link not found');
 
   const member = await prisma.leagueMember.findUnique({
@@ -180,7 +183,20 @@ export async function joinClaim(code: string, memberId: string, displayName?: st
     include: { user: true },
   });
   if (!member || member.leagueId !== league.id) throw new AppError(404, 'Member not found');
-  if (member.inviteStatus === 'ACCEPTED') throw new AppError(409, 'This spot has already been claimed');
+
+  if (member.inviteStatus === 'ACCEPTED') {
+    if (!league.settings?.allowSelfReclaim) throw new AppError(409, 'This spot has already been claimed');
+    // Self-reclaim: re-issue a fresh token and new auth for the existing user
+    const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    const newInviteToken = Array.from(crypto.randomBytes(12)).map((b) => BASE62[b % 62]).join('');
+    await prisma.leagueMember.update({ where: { id: member.id }, data: { inviteToken: newInviteToken } });
+    const rawRefresh = generateRawRefreshToken();
+    await prisma.refreshToken.create({
+      data: { token: hashToken(rawRefresh), userId: member.user!.id, expiresAt: refreshTokenExpiry() },
+    });
+    const accessToken = generateAccessToken(member.user!.id, member.user!.email, member.user!.displayName);
+    return { accessToken, refreshToken: rawRefresh, inviteToken: newInviteToken, user: { id: member.user!.id, email: member.user!.email, displayName: member.user!.displayName } };
+  }
 
   const resolvedName = displayName?.trim() || member.displayName || 'Drafter';
 

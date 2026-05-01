@@ -9,7 +9,7 @@ export class DraftEngine {
     private io: SocketServer,
   ) {}
 
-  async startDraft(leagueId: string, commissionerId: string) {
+  async startDraft(leagueId: string, commissionerId: string, force = false) {
     const league = await this.prisma.league.findUnique({
       where: { id: leagueId },
       include: {
@@ -47,7 +47,7 @@ export class DraftEngine {
     }
 
     const totalPicks = league.settings.totalRounds * acceptedMembers.length;
-    if (league.items.length < totalPicks) {
+    if (!force && league.items.length < totalPicks) {
       throw new AppError(400, `Need at least ${totalPicks} items in the pool for ${league.settings.totalRounds} rounds`);
     }
 

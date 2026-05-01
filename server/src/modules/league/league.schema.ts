@@ -14,6 +14,7 @@ export const draftSettingsSchema = z.object({
   autoPick: z.enum(['RANDOM', 'SKIP', 'BEST_RANKED', 'COMMISSIONER_PICK']).default('COMMISSIONER_PICK'),
   allowTrading: z.boolean().default(false),
   enforceBucketPicking: z.boolean().default(false),
+  allowSelfReclaim: z.boolean().default(false),
   extendedConfig: z.record(z.unknown()).optional(),
 });
 

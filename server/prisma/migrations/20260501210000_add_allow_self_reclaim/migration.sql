@@ -1,0 +1,1 @@
+ALTER TABLE "DraftSettings" ADD COLUMN IF NOT EXISTS "allowSelfReclaim" BOOLEAN NOT NULL DEFAULT false;

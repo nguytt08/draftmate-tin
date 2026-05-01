@@ -4,12 +4,17 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 
-type Member = { id: string; displayName: string | null; inviteEmail: string | null };
-type LeagueInfo = { id: string; name: string; members: Member[] };
+type Member = { id: string; displayName: string | null; inviteEmail: string | null; inviteStatus: string };
+type LeagueInfo = { id: string; name: string; allowSelfReclaim: boolean; members: Member[] };
+
+function memberLabel(m: Member) {
+  return m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : 'Member');
+}
 
 export default function JoinDraft() {
   const { code } = useParams<{ code: string }>();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [isReclaim, setIsReclaim] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,8 +28,9 @@ export default function JoinDraft() {
     retry: false,
   });
 
-  function selectMember(m: Member) {
+  function selectMember(m: Member, reclaim = false) {
     setSelectedMember(m);
+    setIsReclaim(reclaim);
     setDisplayName(m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : ''));
     setError('');
   }
@@ -36,11 +42,10 @@ export default function JoinDraft() {
     try {
       const { data } = await api.post(`/auth/join/${code}/claim`, {
         memberId: selectedMember.id,
-        displayName: displayName.trim() || undefined,
+        displayName: isReclaim ? undefined : (displayName.trim() || undefined),
       });
       setAuth(data.user, data.accessToken);
       if (data.inviteToken) {
-        // Store as fallback re-auth for browsers that block cross-domain cookies (Safari ITP)
         localStorage.setItem('draftmate:recovery-token', data.inviteToken);
         setMagicLink(`${window.location.origin}/invite/${data.inviteToken}`);
       } else {
@@ -58,7 +63,7 @@ export default function JoinDraft() {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <h2 style={{ marginBottom: 8 }}>You're in!</h2>
+          <h2 style={{ marginBottom: 8 }}>{isReclaim ? 'Welcome back!' : "You're in!"}</h2>
           <p style={{ color: '#374151', marginBottom: 16, lineHeight: 1.5 }}>
             Save this link — it's how you get back into your session if you lose it.
             There's no password, so bookmark it or send it to yourself.
@@ -98,32 +103,56 @@ export default function JoinDraft() {
     </div>
   );
 
+  const unclaimed = league!.members.filter((m) => m.inviteStatus === 'PENDING');
+  const claimed = league!.members.filter((m) => m.inviteStatus === 'ACCEPTED');
+
   return (
     <div style={styles.container}>
       <div style={styles.card}>
         <h1 style={styles.title}>Join "{league!.name}"</h1>
 
-        {league!.members.length === 0 ? (
+        {unclaimed.length === 0 && !league!.allowSelfReclaim ? (
           <p style={{ color: '#6b7280', marginTop: 8 }}>All spots have been claimed.</p>
         ) : (
           <>
-            <p style={styles.subtitle}>Who are you?</p>
-            <ul style={styles.memberList}>
-              {league!.members.map((m) => (
-                <li
-                  key={m.id}
-                  style={{
-                    ...styles.memberItem,
-                    ...(selectedMember?.id === m.id ? styles.memberItemSelected : {}),
-                  }}
-                  onClick={() => selectMember(m)}
-                >
-                  {m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : 'Member')}
-                </li>
-              ))}
-            </ul>
+            {unclaimed.length > 0 && (
+              <>
+                <p style={styles.subtitle}>Who are you?</p>
+                <ul style={styles.memberList}>
+                  {unclaimed.map((m) => (
+                    <li
+                      key={m.id}
+                      style={{ ...styles.memberItem, ...(selectedMember?.id === m.id && !isReclaim ? styles.memberItemSelected : {}) }}
+                      onClick={() => selectMember(m, false)}
+                    >
+                      {memberLabel(m)}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
 
-            {selectedMember && (
+            {league!.allowSelfReclaim && claimed.length > 0 && (
+              <>
+                <p style={{ ...styles.subtitle, marginTop: unclaimed.length > 0 ? 16 : 0 }}>
+                  Already joined? Reclaim your slot.
+                </p>
+                <ul style={styles.memberList}>
+                  {claimed.map((m) => (
+                    <li
+                      key={m.id}
+                      style={{ ...styles.memberItem, ...styles.memberItemClaimed, ...(selectedMember?.id === m.id && isReclaim ? styles.memberItemSelected : {}) }}
+                      onClick={() => selectMember(m, true)}
+                    >
+                      {memberLabel(m)}
+                      <span style={styles.claimedBadge}>claimed</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {selectedMember && !isReclaim && (
               <div style={styles.confirmSection}>
                 <label style={styles.label}>Your name</label>
                 <input
@@ -136,6 +165,18 @@ export default function JoinDraft() {
                 {error && <p style={styles.error}>{error}</p>}
                 <button style={styles.primaryBtn} onClick={claim} disabled={loading}>
                   {loading ? 'Joining…' : `Join as ${displayName || selectedMember.displayName || 'Drafter'} →`}
+                </button>
+              </div>
+            )}
+
+            {selectedMember && isReclaim && (
+              <div style={styles.confirmSection}>
+                <p style={{ fontSize: 14, color: '#374151', margin: 0 }}>
+                  Get a new access link for <strong>{memberLabel(selectedMember)}</strong>.
+                </p>
+                {error && <p style={styles.error}>{error}</p>}
+                <button style={{ ...styles.primaryBtn, background: '#d97706' }} onClick={claim} disabled={loading}>
+                  {loading ? 'Reclaiming…' : `Reclaim as ${memberLabel(selectedMember)} →`}
                 </button>
               </div>
             )}
@@ -153,8 +194,10 @@ const styles: Record<string, React.CSSProperties> = {
   title: { fontSize: 22, fontWeight: 700, marginBottom: 4 },
   subtitle: { color: '#6b7280', fontSize: 14, marginBottom: 12 },
   memberList: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 },
-  memberItem: { padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: 15, fontWeight: 500, transition: 'all 0.1s' },
+  memberItem: { padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: 15, fontWeight: 500, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   memberItemSelected: { border: '2px solid #2563eb', background: '#eff6ff', color: '#1d4ed8' },
+  memberItemClaimed: { color: '#6b7280' },
+  claimedBadge: { fontSize: 11, fontWeight: 600, background: '#f3f4f6', color: '#9ca3af', borderRadius: 4, padding: '2px 6px' },
   confirmSection: { display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid #f3f4f6', paddingTop: 16 },
   label: { fontSize: 13, fontWeight: 500, color: '#374151' },
   input: { padding: '8px 12px', border: '1px solid #ddd', borderRadius: 4, fontSize: 15 },

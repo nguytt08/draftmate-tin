@@ -72,7 +72,7 @@ export default function LeagueSetup() {
 
   const [settingsForm, setSettingsForm] = useState({
     format: 'SNAKE', totalRounds: 3, pickTimerSeconds: 7200, autoPick: 'COMMISSIONER_PICK',
-    enforceBucketPicking: false,
+    enforceBucketPicking: false, allowSelfReclaim: false,
   });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   // Tracks the last values confirmed saved to (or loaded from) the server
@@ -112,6 +112,7 @@ export default function LeagueSetup() {
         pickTimerSeconds: league.settings.pickTimerSeconds,
         autoPick: league.settings.autoPick,
         enforceBucketPicking: league.settings.enforceBucketPicking ?? false,
+        allowSelfReclaim: league.settings.allowSelfReclaim ?? false,
       };
       serverSettingsRef.current = s;
       setSettingsForm(s);
@@ -207,7 +208,7 @@ export default function LeagueSetup() {
   });
 
   const startDraft = useMutation({
-    mutationFn: () => api.post(`/leagues/${id}/draft/start`),
+    mutationFn: (force?: boolean) => api.post(`/leagues/${id}/draft/start`, force ? { force: true } : {}),
     onSuccess: (res) => navigate(`/draft/${res.data.id}`),
     onError: (err: any) => setStartError(err?.response?.data?.error ?? 'Failed to start draft'),
   });
@@ -254,9 +255,18 @@ export default function LeagueSetup() {
         ) : isCommissioner ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {startError && (
-              <span style={{ fontSize: 13, color: '#dc2626', maxWidth: 300 }}>{startError}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13, color: '#dc2626', maxWidth: 300 }}>{startError}</span>
+                {startError.startsWith('Need at least') && (
+                  <button style={{ ...styles.startBtn, background: '#d97706', fontSize: 13, padding: '6px 12px', whiteSpace: 'nowrap' }}
+                    onClick={() => { setStartError(null); startDraft.mutate(true); }}
+                    disabled={startDraft.isPending}>
+                    Start anyway
+                  </button>
+                )}
+              </div>
             )}
-            <button style={styles.startBtn} onClick={() => { setStartError(null); startDraft.mutate(); }}
+            <button style={styles.startBtn} onClick={() => { setStartError(null); startDraft.mutate(undefined); }}
               disabled={startDraft.isPending}>
               {startDraft.isPending ? 'Starting…' : 'Start Draft'}
             </button>
@@ -331,6 +341,21 @@ export default function LeagueSetup() {
                 {settingsForm.enforceBucketPicking && (
                   <span style={{ fontSize: 12, color: '#6b7280' }}>
                     Each drafter may pick at most one person per bucket.
+                  </span>
+                )}
+              </div>
+              <div style={styles.fieldGroup}>
+                <label style={{ ...styles.label, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={settingsForm.allowSelfReclaim}
+                    onChange={(e) => setSettingsForm((f) => ({ ...f, allowSelfReclaim: e.target.checked }))}
+                  />
+                  Allow members to reclaim their slot from the join page
+                </label>
+                {settingsForm.allowSelfReclaim && (
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>
+                    Claimed members will appear on the join page and can re-authenticate without commissioner help.
                   </span>
                 )}
               </div>

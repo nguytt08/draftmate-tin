@@ -80,6 +80,7 @@ export async function upsertSettings(leagueId: string, input: DraftSettingsInput
     autoPick: input.autoPick,
     allowTrading: input.allowTrading,
     enforceBucketPicking: input.enforceBucketPicking,
+    allowSelfReclaim: input.allowSelfReclaim,
     extendedConfig: input.extendedConfig as Prisma.InputJsonValue | undefined,
   };
   return prisma.draftSettings.upsert({
@@ -151,15 +152,23 @@ export async function getLeagueByJoinCode(code: string) {
     select: {
       id: true,
       name: true,
+      settings: { select: { allowSelfReclaim: true } },
       members: {
-        where: { inviteStatus: 'PENDING' },
-        select: { id: true, displayName: true, inviteEmail: true },
+        where: { inviteStatus: { not: 'DECLINED' } },
+        select: { id: true, displayName: true, inviteEmail: true, inviteStatus: true },
         orderBy: { draftPosition: 'asc' },
       },
     },
   });
   if (!league) throw new AppError(404, 'Join link not found or expired');
-  return league;
+  const allowSelfReclaim = league.settings?.allowSelfReclaim ?? false;
+  return {
+    ...league,
+    allowSelfReclaim,
+    members: allowSelfReclaim
+      ? league.members
+      : league.members.filter((m) => m.inviteStatus === 'PENDING'),
+  };
 }
 
 export async function revokeMember(leagueId: string, memberId: string) {
