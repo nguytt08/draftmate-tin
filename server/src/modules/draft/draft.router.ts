@@ -112,22 +112,18 @@ draftRouter.post('/:id/draft/reset', requireCommissioner(), async (req: Request,
       prisma.draft.update({
         where: { id: draft.id },
         data: {
-          status: 'ACTIVE',
+          status: 'PENDING',
           currentPickNumber: 1,
           currentRound: 1,
-          currentMemberId: league.members[0]?.id ?? null,
+          currentMemberId: null,
           completedAt: null,
+          commissionerPickRequired: false,
         },
       }),
     ]);
 
-    // Schedule a fresh timer for pick 1
-    if (league.members.length > 0 && league.settings) {
-      await timerService.schedulePickTimer(draft.id, 1, league.settings.pickTimerSeconds);
-    }
-
     const state = await getEngine().getDraftState(draft.id);
-    io.to(`draft:${draft.id}`).emit('draft:state', state);
+    io.of('/draft').to(`draft:${draft.id}`).emit('draft:state', state);
     res.json(state);
   } catch (err) { next(err); }
 });

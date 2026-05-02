@@ -112,6 +112,9 @@ export async function inviteMember(leagueId: string, commissionerId: string, inp
   const inviteToken = Array.from(crypto.randomBytes(12)).map((b) => BASE62[b % 62]).join('');
   const inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
+  const maxPos = await prisma.leagueMember.aggregate({ where: { leagueId }, _max: { draftPosition: true } });
+  const nextPosition = (maxPos._max.draftPosition ?? 0) + 1;
+
   const member = await prisma.leagueMember.create({
     data: {
       leagueId,
@@ -120,6 +123,7 @@ export async function inviteMember(leagueId: string, commissionerId: string, inp
       inviteToken,
       inviteExpiresAt,
       notifyPhone: input.notifyPhone,
+      draftPosition: nextPosition,
     },
   });
 
@@ -213,6 +217,8 @@ export async function deleteLeague(leagueId: string) {
 export async function selfJoin(leagueId: string, userId: string) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   const inviteToken = Array.from(crypto.randomBytes(12)).map((b) => BASE62[b % 62]).join('');
+  const maxPos = await prisma.leagueMember.aggregate({ where: { leagueId }, _max: { draftPosition: true } });
+  const nextPosition = (maxPos._max.draftPosition ?? 0) + 1;
   return prisma.leagueMember.create({
     data: {
       leagueId,
@@ -222,20 +228,28 @@ export async function selfJoin(leagueId: string, userId: string) {
       inviteStatus: 'ACCEPTED',
       inviteToken,
       notifyEmail: true,
+      draftPosition: nextPosition,
     },
   });
+}
+
+async function setDraftOrder(leagueId: string, memberIds: string[]) {
+  const all = await prisma.leagueMember.findMany({ where: { leagueId } });
+  await prisma.$transaction(
+    all.map((m) => prisma.leagueMember.update({ where: { id: m.id }, data: { draftPosition: null } })),
+  );
+  await prisma.$transaction(
+    memberIds.map((id, i) => prisma.leagueMember.update({ where: { id }, data: { draftPosition: i + 1 } })),
+  );
+  return prisma.leagueMember.findMany({ where: { leagueId }, orderBy: { draftPosition: 'asc' } });
 }
 
 export async function randomizeDraftOrder(leagueId: string) {
   const members = await prisma.leagueMember.findMany({ where: { leagueId } });
   const shuffled = [...members].sort(() => Math.random() - 0.5);
-  // Clear all positions first to avoid @@unique([leagueId, draftPosition]) conflicts
-  await prisma.$transaction(
-    members.map((m) => prisma.leagueMember.update({ where: { id: m.id }, data: { draftPosition: null } })),
-  );
-  // Then assign new shuffled positions sequentially
-  await prisma.$transaction(
-    shuffled.map((m, i) => prisma.leagueMember.update({ where: { id: m.id }, data: { draftPosition: i + 1 } })),
-  );
-  return prisma.leagueMember.findMany({ where: { leagueId }, orderBy: { draftPosition: 'asc' } });
+  return setDraftOrder(leagueId, shuffled.map((m) => m.id));
+}
+
+export async function reorderMembers(leagueId: string, memberIds: string[]) {
+  return setDraftOrder(leagueId, memberIds);
 }

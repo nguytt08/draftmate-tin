@@ -78,6 +78,12 @@ leagueRouter.post('/:id/members/randomize-order', requireCommissioner(), async (
   } catch (err) { next(err); }
 });
 
+leagueRouter.post('/:id/members/reorder', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await leagueService.reorderMembers(req.params.id, req.body.memberIds));
+  } catch (err) { next(err); }
+});
+
 leagueRouter.post('/:id/members/self', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const member = await leagueService.selfJoin(req.params.id, req.user!.sub);

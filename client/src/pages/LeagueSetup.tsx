@@ -92,6 +92,8 @@ export default function LeagueSetup() {
   const [startError, setStartError] = useState<string | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [dragOverBucket, setDragOverBucket] = useState<string | null>(null);
+  const [draggedMemberId, setDraggedMemberId] = useState<string | null>(null);
+  const [dragOverMemberId, setDragOverMemberId] = useState<string | null>(null);
   const [showJoinMenu, setShowJoinMenu] = useState(false);
   const [memberMenuId, setMemberMenuId] = useState<string | null>(null);
 
@@ -179,6 +181,11 @@ export default function LeagueSetup() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', id] }),
   });
 
+  const reorderMembers = useMutation({
+    mutationFn: (memberIds: string[]) => api.post(`/leagues/${id}/members/reorder`, { memberIds }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['league', id] }),
+  });
+
   const revokeMember = useMutation({
     mutationFn: (memberId: string) => api.post(`/leagues/${id}/members/${memberId}/revoke`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['league', id] }),
@@ -244,10 +251,13 @@ export default function LeagueSetup() {
   const isCommissioner = user?.id === league?.commissionerId;
   const alreadyMember = (league?.members ?? []).some((m: any) => m.user?.id === user?.id);
 
-  const acceptedMembers = (league?.members ?? []).filter((m: any) => m.inviteStatus === 'ACCEPTED');
-  const suggestedRounds = acceptedMembers.length > 0 && items.length > 0
-    ? Math.floor(items.length / acceptedMembers.length)
+  const eligibleMembers = (league?.members ?? []).filter((m: any) => m.inviteStatus !== 'DECLINED');
+  const eligibleMemberCount = eligibleMembers.length;
+  const suggestedRounds = eligibleMemberCount > 0 && items.length > 0
+    ? Math.floor(items.length / eligibleMemberCount)
     : null;
+  const missingPositions = eligibleMembers.filter((m: any) => m.draftPosition == null).length;
+  const draftLocked = ['ACTIVE', 'PAUSED', 'COMPLETED'].includes(league?.draft?.status ?? '');
 
   // Group items by bucket for display
   const bucketed = items.reduce<Record<string, Item[]>>((acc, item) => {
@@ -271,6 +281,11 @@ export default function LeagueSetup() {
           </button>
         ) : isCommissioner ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {missingPositions > 0 && !startError && (
+              <span style={{ fontSize: 13, color: '#92400e', background: '#fef3c7', padding: '4px 10px', borderRadius: 4, whiteSpace: 'nowrap' }}>
+                ⚠ {missingPositions} member{missingPositions > 1 ? 's' : ''} missing draft position
+              </span>
+            )}
             {startError && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 13, color: '#dc2626', maxWidth: 300 }}>{startError}</span>
@@ -318,14 +333,12 @@ export default function LeagueSetup() {
                     </button>
                   )}
                 </div>
-                {(() => {
-                  const eligibleCount = (league?.members ?? []).filter((m: any) => m.inviteStatus !== 'DECLINED').length;
-                  if (eligibleCount === 0) return null;
-                  const picksNeeded = settingsForm.totalRounds * eligibleCount;
+                {eligibleMemberCount > 0 && (() => {
+                  const picksNeeded = settingsForm.totalRounds * eligibleMemberCount;
                   const ok = items.length >= picksNeeded;
                   return (
                     <div style={{ fontSize: 12, color: ok ? '#6b7280' : '#dc2626', marginTop: 4 }}>
-                      {settingsForm.totalRounds} rounds × {eligibleCount} members = {picksNeeded} picks — {ok ? `${items.length} items ✓` : `need ${picksNeeded - items.length} more items`}
+                      {settingsForm.totalRounds} rounds × {eligibleMemberCount} members = {picksNeeded} picks — {ok ? `${items.length} items ✓` : `need ${picksNeeded - items.length} more items`}
                     </div>
                   );
                 })()}
@@ -412,14 +425,19 @@ export default function LeagueSetup() {
                   onKeyDown={(e) => { if (e.key === 'Enter') inviteMember.mutate(); }} />
               </div>
             )}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              <button style={{ ...styles.ghostBtn, flex: 1 }} onClick={() => randomizeOrder.mutate()}>
+            {draftLocked && isCommissioner && (
+              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8, marginTop: 0 }}>
+                Draft order is locked while a draft is active. Reset the draft from the Draft Room to reorder.
+              </p>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+              <button style={{ ...styles.ghostBtn, minWidth: 0 }} onClick={() => randomizeOrder.mutate()} disabled={draftLocked}>
                 Randomize Draft Order
               </button>
               {isCommissioner && (
-                <div style={{ position: 'relative', display: 'flex', flex: 1, gap: 0 }}>
+                <div style={{ position: 'relative', display: 'flex', minWidth: 0, gap: 0 }}>
                   <button
-                    style={{ ...styles.ghostBtn, flex: 1 }}
+                    style={{ ...styles.ghostBtn, flex: 1, textAlign: 'center' }}
                     onClick={async () => {
                       if (league?.joinCode) {
                         const link = `${window.location.origin}/join/${league.joinCode}`;
@@ -443,7 +461,7 @@ export default function LeagueSetup() {
                   {league?.joinCode && (
                     <button
                       title="Join link options"
-                      style={{ ...styles.ghostBtn, padding: '4px 10px', borderLeft: 'none', borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+                      style={{ ...styles.ghostBtn, padding: '4px 6px', borderLeft: 'none', borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
                       onClick={(e) => { e.stopPropagation(); setShowJoinMenu((m) => !m); }}
                     >
                       ⋯
@@ -454,7 +472,7 @@ export default function LeagueSetup() {
                       <button
                         style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#374151' }}
                         onClick={async () => {
-                          if (confirm('Regenerate join link? The old link will stop working.')) {
+                          if (confirm('Generate new join link? The old link will stop working.')) {
                             const { data } = await api.post(`/leagues/${id}/join-code`);
                             await navigator.clipboard.writeText(`${window.location.origin}/join/${data.joinCode}`);
                             qc.invalidateQueries({ queryKey: ['league', id] });
@@ -462,7 +480,7 @@ export default function LeagueSetup() {
                           setShowJoinMenu(false);
                         }}
                       >
-                        Regenerate Join Link
+                        Generate New Join Link
                       </button>
                     </div>
                   )}
@@ -480,9 +498,57 @@ export default function LeagueSetup() {
               </div>
             )}
             <ul style={{ listStyle: 'none' }}>
-              {(league?.members ?? []).map((m: { id: string; inviteEmail: string | null; displayName?: string | null; inviteStatus: string; draftPosition: number | null; user?: { id: string; displayName: string } }) => (
-                <li key={m.id} style={styles.memberRow}>
-                  <span style={styles.position}>{m.draftPosition ?? '—'}</span>
+              {(league?.members ?? []).map((m: { id: string; inviteEmail: string | null; displayName?: string | null; inviteStatus: string; draftPosition: number | null; user?: { id: string; displayName: string } }, idx: number, arr: any[]) => (
+                <li
+                  key={m.id}
+                  draggable={isCommissioner && !isMobile && !draftLocked}
+                  onDragStart={isCommissioner && !isMobile && !draftLocked ? () => setDraggedMemberId(m.id) : undefined}
+                  onDragOver={isCommissioner && !isMobile && !draftLocked ? (e) => { e.preventDefault(); setDragOverMemberId(m.id); } : undefined}
+                  onDragLeave={isCommissioner && !isMobile && !draftLocked ? () => setDragOverMemberId(null) : undefined}
+                  onDrop={isCommissioner && !isMobile && !draftLocked ? (e) => {
+                    e.preventDefault();
+                    if (!draggedMemberId || draggedMemberId === m.id) { setDraggedMemberId(null); setDragOverMemberId(null); return; }
+                    const newOrder = [...arr];
+                    const fromIdx = newOrder.findIndex((x) => x.id === draggedMemberId);
+                    const toIdx = newOrder.findIndex((x) => x.id === m.id);
+                    const [moved] = newOrder.splice(fromIdx, 1);
+                    newOrder.splice(toIdx, 0, moved);
+                    reorderMembers.mutate(newOrder.map((x) => x.id));
+                    setDraggedMemberId(null); setDragOverMemberId(null);
+                  } : undefined}
+                  onDragEnd={isCommissioner && !isMobile && !draftLocked ? () => { setDraggedMemberId(null); setDragOverMemberId(null); } : undefined}
+                  style={{
+                    ...styles.memberRow,
+                    opacity: draggedMemberId === m.id ? 0.4 : 1,
+                    borderTop: dragOverMemberId === m.id && draggedMemberId !== m.id ? '2px solid #2563eb' : undefined,
+                    cursor: isCommissioner && !isMobile && !draftLocked ? 'grab' : 'default',
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                    <span style={styles.position}>{m.draftPosition ?? '—'}</span>
+                    {isCommissioner && isMobile && !draftLocked && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <button
+                          disabled={idx === 0}
+                          onClick={() => {
+                            const newOrder = [...arr];
+                            [newOrder[idx - 1], newOrder[idx]] = [newOrder[idx], newOrder[idx - 1]];
+                            reorderMembers.mutate(newOrder.map((x) => x.id));
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: idx === 0 ? 'default' : 'pointer', color: idx === 0 ? '#d1d5db' : '#6b7280', fontSize: 10, lineHeight: 1, padding: '1px 3px' }}
+                        >▲</button>
+                        <button
+                          disabled={idx === arr.length - 1}
+                          onClick={() => {
+                            const newOrder = [...arr];
+                            [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
+                            reorderMembers.mutate(newOrder.map((x) => x.id));
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: idx === arr.length - 1 ? 'default' : 'pointer', color: idx === arr.length - 1 ? '#d1d5db' : '#6b7280', fontSize: 10, lineHeight: 1, padding: '1px 3px' }}
+                        >▼</button>
+                      </div>
+                    )}
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 500 }}>
                       {m.user?.displayName ?? m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : 'Member')}
@@ -544,6 +610,21 @@ export default function LeagueSetup() {
                   )}
                 </li>
               ))}
+              {draggedMemberId && isCommissioner && !isMobile && (
+                <li
+                  onDragOver={(e) => { e.preventDefault(); setDragOverMemberId('__end__'); }}
+                  onDragLeave={() => setDragOverMemberId(null)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const allMembers = league?.members ?? [];
+                    const newOrder = (allMembers as any[]).filter((x) => x.id !== draggedMemberId);
+                    newOrder.push((allMembers as any[]).find((x) => x.id === draggedMemberId));
+                    reorderMembers.mutate(newOrder.map((x) => x.id));
+                    setDraggedMemberId(null); setDragOverMemberId(null);
+                  }}
+                  style={{ listStyle: 'none', height: 8, borderTop: dragOverMemberId === '__end__' ? '2px solid #2563eb' : '2px solid transparent', transition: 'border-color 0.1s' }}
+                />
+              )}
             </ul>
           </section>
 
@@ -602,7 +683,7 @@ export default function LeagueSetup() {
           <section style={{ ...styles.card, marginTop: 16 }}>
             {/* Bucketed display */}
             {namedBuckets.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(auto-fill, minmax(140px, 1fr))' : `repeat(${Math.min(namedBuckets.length, 3)}, 1fr) ${unbucketed.length === 0 ? 'minmax(60px, 110px)' : '1fr'}`, gap: 12, marginTop: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(auto-fill, minmax(140px, 1fr))' : `repeat(${Math.min(namedBuckets.length, 3)}, 1fr) ${unbucketed.length === 0 ? 'minmax(100px, 160px)' : '1fr'}`, gap: 12, marginTop: 12 }}>
                 {namedBuckets.map((bucket) => {
                   const color = bucketColor(bucket, allBucketNames);
                   const isOver = dragOverBucket === bucket;
@@ -680,7 +761,7 @@ export default function LeagueSetup() {
                   </div>
                   {unbucketed.length === 0 && draggedItemId && items.find(it => it.id === draggedItemId)?.bucket && (
                     <div style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', padding: '12px 0', pointerEvents: 'none' }}>
-                      Drop here to remove bucket
+                      Drop here to move to No bucket
                     </div>
                   )}
                   <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>

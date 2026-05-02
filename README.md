@@ -29,6 +29,10 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 - **Force-delete already-picked items** — attempting to delete an item that has already been picked shows a "cannot delete" notice; commissioner can force-delete it (soft-delete: `isDeleted` flag set, Pick row kept); the draft board shows `(removed)` with strikethrough in that slot so draft history is preserved; auto-pick and the available-items pool both exclude soft-deleted items; league deletion still cascades and removes the row entirely
 - **Secure auth** — JWT access tokens (15 min, auto-refreshed silently) + HttpOnly refresh tokens (30-day rotation)
 - **Admin impersonation panel** — site admin (identified by `ADMIN_EMAILS` env var, no schema changes) can view `/admin` to see all registered users with league/membership counts; "View as" button issues a 24h access token for any user so the admin sees exactly what they see — their leagues, draft state, settings — for debugging; a fixed purple banner shows who is being impersonated and an "Exit" button restores the admin's own session via cookie refresh; guest stub accounts (`@draftmate.internal`) are hidden from the list
+- **Draft order management** — new members are automatically assigned sequential draft positions as they are added (no manual ordering required); commissioner can drag-and-drop member rows to reorder on desktop (ghost drop zone at the bottom for last-position drops) or tap ▲ / ▼ buttons on mobile; Randomize button still available for a one-click shuffle; a warning badge appears on the Start Draft button if any member still has no position assigned
+- **Draft Order schedule** — collapsible pick schedule table above the Recent Picks panel in the draft room showing the full sequential order (member, round, pick number); auto-scrolls to the current pick row on every state update
+- **Mobile draft board view modes** — "By Round" (default) and "By Team" toggle in the draft board header on mobile; By Round renders cards in correct snake pick order; By Team shows a compact member × round table for a full overview
+- **"Your next pick" countdown** — the yellow waiting banner in the draft room shows how many picks until it's your turn ("Your next pick is in X picks" or "Your pick is next!")
 - **Mobile-responsive UI** — all pages adapt below 768px via a `useIsMobile` hook (no extra libraries); Draft Room collapses from three horizontal columns to a vertical stack with the item pool first; the draft board replaces the wide member-column table with a round-by-round 2-column card grid readable without horizontal scrolling; panels stretch full-width; LeagueSetup bucket grid wraps to auto-fill columns; commissioner notes editor stacks vertically on mobile; bucket reassignment uses a dropdown instead of drag-and-drop on touch screens
 
 ## Tech Stack
@@ -81,6 +85,7 @@ REDIS_URL=redis://localhost:6379
 JWT_SECRET=<at least 32 random characters>
 
 # Optional — notifications work in log-only mode without these
+ADMIN_EMAILS=
 SENDGRID_API_KEY=SG.xxxxx
 EMAIL_FROM=noreply@yourdomain.com
 TWILIO_ACCOUNT_SID=ACxxxxx
@@ -137,7 +142,7 @@ All routes are prefixed with `/api/v1`. Most require a `Bearer <accessToken>` he
 | Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/invite/magic/:token`, `POST /auth/invite/accept/:token` (password flow), `POST /auth/join/:code/claim` |
 | Admin | `GET /auth/admin/users` (requireAdmin), `POST /auth/admin/impersonate/:userId` (requireAdmin) |
 | Leagues | `POST /leagues`, `GET /leagues`, `GET /leagues/:id`, `PATCH /leagues/:id`, `DELETE /leagues/:id`, `PUT /leagues/:id/settings`, `GET /leagues/join/:code` (public) |
-| Members | `GET /leagues/:id/members`, `POST /leagues/:id/members/invite`, `POST /leagues/:id/members/randomize-order`, `PATCH /leagues/:id/members/:memberId`, `DELETE /leagues/:id/members/:memberId`, `POST /leagues/:id/members/:memberId/revoke`, `GET /leagues/:id/members/:memberId/magic-link` (commissioner), `POST /leagues/:id/join-code` |
+| Members | `GET /leagues/:id/members`, `POST /leagues/:id/members/invite`, `POST /leagues/:id/members/randomize-order`, `POST /leagues/:id/members/reorder` (commissioner), `PATCH /leagues/:id/members/:memberId`, `DELETE /leagues/:id/members/:memberId`, `POST /leagues/:id/members/:memberId/revoke`, `GET /leagues/:id/members/:memberId/magic-link` (commissioner), `POST /leagues/:id/join-code` |
 | Items | `GET /leagues/:id/items`, `POST /leagues/:id/items`, `POST /leagues/:id/items/bulk`, `PATCH /leagues/:id/items/:itemId`, `DELETE /leagues/:id/items/:itemId` |
 | Item Notes | `GET /leagues/:id/items/notes/mine` (bulk), `GET /leagues/:id/items/:itemId/notes`, `PUT /leagues/:id/items/:itemId/notes/mine` |
 | Draft | `POST /leagues/:id/draft/start`, `POST /leagues/:id/draft/pause`, `POST /leagues/:id/draft/resume`, `GET /leagues/:id/draft`, `GET /leagues/:id/draft/board`, `POST /leagues/:id/draft/picks`, `POST /leagues/:id/draft/picks/override` (commissioner), `POST /leagues/:id/draft/reset` |

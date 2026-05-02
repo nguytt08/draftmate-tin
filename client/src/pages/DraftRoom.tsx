@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
@@ -11,6 +11,19 @@ interface Member { id: string; inviteEmail: string | null; displayName?: string 
 
 function memberDisplay(m: { user?: { displayName: string } | null; displayName?: string | null; inviteEmail: string | null }): string {
   return m.user?.displayName ?? m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : 'Member');
+}
+
+function getPickOrder(members: Member[], totalRounds: number, format: string) {
+  const n = members.length;
+  const result: { pickNumber: number; member: Member; round: number }[] = [];
+  for (let pick = 1; pick <= totalRounds * n; pick++) {
+    const idx = pick - 1;
+    const roundIdx = Math.floor(idx / n);
+    const pos = idx % n;
+    const memberIdx = format === 'SNAKE' && roundIdx % 2 === 1 ? n - 1 - pos : pos;
+    result.push({ pickNumber: pick, member: members[memberIdx], round: roundIdx + 1 });
+  }
+  return result;
 }
 interface Pick { id: string; pickNumber: number; round: number; positionInRound: number; memberId: string; itemId: string; isAutoPick: boolean; isOverridePick: boolean; item: DraftItem; member: Member }
 interface DraftState {
@@ -36,6 +49,9 @@ export default function DraftRoom() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
+  const [orderExpanded, setOrderExpanded] = useState(true);
+  const [boardView, setBoardView] = useState<'rounds' | 'teams'>('rounds');
+  const currentOrderRowRef = useRef<HTMLTableRowElement>(null);
 
   const { data: leagueMeta } = useQuery<{ id: string; commissionerId: string; name: string } | null>({
     queryKey: ['draft-league', draftId],
@@ -84,6 +100,12 @@ export default function DraftRoom() {
     };
   }, [draftId, user]);
 
+  // Auto-scroll draft order table to current pick row
+  useEffect(() => {
+    if (!orderExpanded) return;
+    currentOrderRowRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [localState?.draft.currentPickNumber, orderExpanded]);
+
   // Timer countdown
   useEffect(() => {
     if (!localState?.draft.timerEndsAt) { setTimerDisplay(''); return; }
@@ -125,6 +147,16 @@ export default function DraftRoom() {
       alert((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Override failed');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function startDraft(force?: boolean) {
+    if (!leagueId) return;
+    try {
+      await api.post(`/leagues/${leagueId}/draft/start`, force ? { force: true } : {});
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to start draft';
+      if (window.confirm(`${msg}\n\nStart anyway?`)) startDraft(true);
     }
   }
 
@@ -201,6 +233,15 @@ export default function DraftRoom() {
     if (pickGrid[p.round]) pickGrid[p.round][p.memberId] = p;
   }
 
+  const pickOrder = members.length > 0 && settings
+    ? getPickOrder(members, settings.totalRounds, settings.format)
+    : [];
+
+  const nextMyPick = myMember
+    ? pickOrder.find((o) => o.member.id === myMember.id && o.pickNumber >= draft.currentPickNumber)
+    : null;
+  const picksUntilMyTurn = nextMyPick ? nextMyPick.pickNumber - draft.currentPickNumber : null;
+
   function renderItem(item: DraftItem, blocked = false, overrideBlocked = false) {
     const commNote = item.commissionerNotes;
     const myNote = myNotes[item.id] ?? '';
@@ -273,6 +314,21 @@ export default function DraftRoom() {
         </div>
       </header>
 
+      {/* Draft reset banner */}
+      {draft.status === 'PENDING' && (
+        <div style={{ background: '#fef9c3', borderBottom: '1px solid #fde68a', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, fontSize: 14 }}>
+          <span>Draft has been reset. Reorder members if needed, then start a new draft.</span>
+          {isCommissioner && (
+            <button onClick={() => startDraft()} style={{ padding: '4px 12px', fontSize: 13, background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
+              Start Draft
+            </button>
+          )}
+          <button onClick={() => navigate(`/leagues/${leagueId}/setup`)} style={{ padding: '4px 12px', fontSize: 13, background: 'none', color: '#2563eb', border: '1px solid #2563eb', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
+            Go to League Setup
+          </button>
+        </div>
+      )}
+
       {/* On-the-clock banner */}
       {isMyTurn && draft.status === 'ACTIVE' && (
         <div style={styles.onClock}>
@@ -287,6 +343,11 @@ export default function DraftRoom() {
       {!isMyTurn && draft.status === 'ACTIVE' && currentMember && !(isCommissioner && draft.commissionerPickRequired) && (
         <div style={styles.waitingBanner}>
           Waiting for <strong>{memberDisplay(currentMember)}</strong>...
+          {picksUntilMyTurn !== null && (
+            <span style={{ marginLeft: 10, fontSize: 12, opacity: 0.8 }}>
+              {picksUntilMyTurn === 1 ? '— Your pick is next!' : `— Your next pick is in ${picksUntilMyTurn} picks`}
+            </span>
+          )}
         </div>
       )}
 
@@ -362,21 +423,69 @@ export default function DraftRoom() {
 
         {/* Draft Board */}
         <section style={{ ...styles.panel, flex: isMobile ? 'none' : 2, overflowX: isMobile ? 'visible' : 'auto', minWidth: isMobile ? 0 : 220 }}>
-          <h2 style={styles.panelTitle}>Draft Board</h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h2 style={{ ...styles.panelTitle, marginBottom: 0 }}>Draft Board</h2>
+            {isMobile && (
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button onClick={() => setBoardView('rounds')} style={{ padding: '3px 9px', fontSize: 12, background: boardView === 'rounds' ? '#2563eb' : 'none', color: boardView === 'rounds' ? '#fff' : '#6b7280', border: '1px solid #d1d5db', borderRadius: 4, cursor: 'pointer' }}>By Round</button>
+                <button onClick={() => setBoardView('teams')} style={{ padding: '3px 9px', fontSize: 12, background: boardView === 'teams' ? '#2563eb' : 'none', color: boardView === 'teams' ? '#fff' : '#6b7280', border: '1px solid #d1d5db', borderRadius: 4, cursor: 'pointer' }}>By Team</button>
+              </div>
+            )}
+          </div>
           {isMobile ? (
-            // Mobile: round-by-round card grid
+            boardView === 'teams' ? (
+              // Mobile: by-team table — member rows, round columns
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...styles.table, fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...styles.th, whiteSpace: 'nowrap' }}>Member</th>
+                      {Array.from({ length: settings?.totalRounds ?? 0 }, (_, i) => (
+                        <th key={i + 1} style={styles.th}>R{i + 1}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((m) => (
+                      <tr key={m.id} style={m.id === draft.currentMemberId ? { background: '#eff6ff' } : {}}>
+                        <td style={{ ...styles.td, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          {memberDisplay(m)}{onlineUsers.includes(m.userId ?? '') && <span style={styles.onlineDot} />}
+                        </td>
+                        {Array.from({ length: settings?.totalRounds ?? 0 }, (_, i) => {
+                          const round = i + 1;
+                          const pick = pickGrid[round]?.[m.id];
+                          return (
+                            <td key={round} style={{ ...styles.td, ...(pick ? {} : styles.tdEmpty) }}>
+                              {pick ? (
+                                pick.item.isDeleted
+                                  ? <span style={{ textDecoration: 'line-through', color: '#9ca3af' }}>(removed)</span>
+                                  : <>{pick.item.name}{pick.isAutoPick && <span style={styles.autoPick}> ★</span>}{pick.isOverridePick && <span style={styles.overridePick}> 👑</span>}</>
+                              ) : (
+                                round === draft.currentRound && m.id === draft.currentMemberId
+                                  ? <span style={styles.onClock_small}>🕐</span>
+                                  : null
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+            // Mobile: round-by-round card grid (pick order matches actual draft sequence)
             <div>
               {Array.from({ length: settings?.totalRounds ?? 0 }, (_, i) => i + 1).map((round) => (
                 <div key={round} style={{ marginBottom: 20 }}>
                   <div style={styles.roundHeader}>Round {round}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    {members.map((m, idx) => {
+                    {pickOrder.filter((o) => o.round === round).map(({ pickNumber, member: m }) => {
                       const pick = pickGrid[round]?.[m.id];
                       const isOnClock = round === draft.currentRound && m.id === draft.currentMemberId;
-                      const globalPickNum = (round - 1) * members.length + idx + 1;
                       return (
                         <div key={m.id} style={{ ...styles.pickCard, ...(isOnClock ? styles.pickCardActive : {}) }}>
-                          <div style={styles.cardMeta}>#{globalPickNum} · {memberDisplay(m)}{onlineUsers.includes(m.userId ?? '') && <span style={styles.onlineDot} />}</div>
+                          <div style={styles.cardMeta}>#{pickNumber} · {memberDisplay(m)}{onlineUsers.includes(m.userId ?? '') && <span style={styles.onlineDot} />}</div>
                           <div style={styles.cardItem}>
                             {pick ? (
                               pick.item.isDeleted
@@ -393,6 +502,7 @@ export default function DraftRoom() {
                 </div>
               ))}
             </div>
+            )
           ) : (
             // Desktop: original table
             <table style={styles.table}>
@@ -440,22 +550,64 @@ export default function DraftRoom() {
           )}
         </section>
 
-        {/* Pick History */}
-        <section style={{ ...styles.panel, maxWidth: isMobile ? undefined : 240, minWidth: isMobile ? 0 : 220 }}>
-          <h2 style={styles.panelTitle}>Recent Picks</h2>
-          <ul style={{ listStyle: 'none', fontSize: 13 }}>
-            {[...picks].reverse().slice(0, isMobile ? 10 : 20).map((p) => (
-              <li key={p.id} style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
-                <div style={{ fontWeight: 500 }}>{p.item.name}</div>
-                <div style={{ color: '#888', fontSize: 12 }}>
-                  {memberDisplay(p.member)} · R{p.round}.{p.positionInRound}
-                  {p.isAutoPick && ' (auto)'}
-                  {p.isOverridePick && ' (override)'}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {/* Right column: Draft Order + Pick History */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minWidth: isMobile ? 0 : 220, maxWidth: isMobile ? undefined : 240 }}>
+          {/* Draft Order */}
+          <section style={{ ...styles.panel, flex: 'none' }}>
+            <div
+              onClick={() => setOrderExpanded((v) => !v)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: orderExpanded ? 12 : 0 }}
+            >
+              <h2 style={{ ...styles.panelTitle, marginBottom: 0 }}>Draft Order</h2>
+              <span style={{ fontSize: 12, color: '#9ca3af' }}>{orderExpanded ? '▲' : '▼'}</span>
+            </div>
+            {orderExpanded && (
+              <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                <table style={{ ...styles.table, fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>#</th>
+                      <th style={styles.th}>Member</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pickOrder.map(({ pickNumber, member }) => {
+                      const isDone = pickNumber < draft.currentPickNumber;
+                      const isCurrent = pickNumber === draft.currentPickNumber;
+                      return (
+                        <tr
+                          key={pickNumber}
+                          ref={isCurrent ? currentOrderRowRef : undefined}
+                          style={isCurrent ? { background: '#dbeafe', fontWeight: 600 } : isDone ? { opacity: 0.45 } : {}}
+                        >
+                          <td style={styles.td}>{pickNumber}</td>
+                          <td style={styles.td}>{memberDisplay(member)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {/* Pick History */}
+          <section style={{ ...styles.panel, flex: 'none' }}>
+            <h2 style={styles.panelTitle}>Recent Picks</h2>
+            <ul style={{ listStyle: 'none', fontSize: 13 }}>
+              {[...picks].reverse().slice(0, isMobile ? 10 : 20).map((p) => (
+                <li key={p.id} style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  <div style={{ fontWeight: 500 }}>{p.item.name}</div>
+                  <div style={{ color: '#888', fontSize: 12 }}>
+                    {memberDisplay(p.member)} · R{p.round}.{p.positionInRound}
+                    {p.isAutoPick && ' (auto)'}
+                    {p.isOverridePick && ' (override)'}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
       </div>
     </div>
   );
