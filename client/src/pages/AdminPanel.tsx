@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/authStore';
@@ -15,6 +15,7 @@ interface AdminUser {
 export default function AdminPanel() {
   const navigate = useNavigate();
   const { setAuth, setImpersonating } = useAuthStore();
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
 
@@ -35,6 +36,7 @@ export default function AdminPanel() {
       const { data } = await api.post(`/auth/admin/impersonate/${user.id}`);
       setImpersonating({ id: user.id, email: user.email, displayName: user.displayName });
       setAuth(data.user, data.accessToken);
+      qc.clear();
       navigate('/');
     } finally {
       setImpersonatingId(null);

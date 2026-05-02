@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from './store/authStore';
 import { api } from './api/client';
 import Login from './pages/Login';
@@ -26,6 +27,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function ImpersonationBanner() {
   const { impersonatingUser, setImpersonating, setAuth } = useAuthStore();
   const navigate = useNavigate();
+  const qc = useQueryClient();
 
   if (!impersonatingUser) return null;
 
@@ -34,9 +36,11 @@ function ImpersonationBanner() {
       const { data } = await api.post('/auth/refresh');
       setAuth(data.user, data.accessToken);
       setImpersonating(null);
+      qc.clear();
       navigate('/admin');
     } catch {
       setImpersonating(null);
+      qc.clear();
       navigate('/');
     }
   }
