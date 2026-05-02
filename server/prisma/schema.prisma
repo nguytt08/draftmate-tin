@@ -132,12 +132,14 @@ model DraftItem {
   metadata          Json?
   commissionerNotes String?
   isAvailable       Boolean  @default(true)
+  isDeleted         Boolean  @default(false)
   createdAt         DateTime @default(now())
 
   pick        Pick?
   memberNotes MemberItemNote[]
 
   @@index([leagueId, isAvailable])
+  @@index([leagueId, isDeleted])
 }
 
 // ─── MEMBER ITEM NOTES ────────────────────────────────────────────────────────

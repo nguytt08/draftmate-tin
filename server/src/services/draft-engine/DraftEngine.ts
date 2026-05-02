@@ -304,7 +304,7 @@ export class DraftEngine {
               orderBy: { draftPosition: 'asc' },
               include: { user: { select: { displayName: true } } },
             },
-            items: { where: { isAvailable: true }, orderBy: { name: 'asc' } },
+            items: { where: { isAvailable: true, isDeleted: false }, orderBy: { name: 'asc' } },
           },
         },
         timerJobs: { where: { status: 'ACTIVE' } },

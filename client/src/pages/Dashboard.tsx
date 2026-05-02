@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface League {
   id: string;
@@ -17,6 +18,7 @@ interface League {
 export default function Dashboard() {
   const { user, clearAuth } = useAuthStore();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const qc = useQueryClient();
   const [newLeagueName, setNewLeagueName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -45,9 +47,9 @@ export default function Dashboard() {
 
   return (
     <div style={styles.page}>
-      <header style={styles.header}>
+      <header style={{ ...styles.header, padding: isMobile ? '10px 16px' : '12px 24px' }}>
         <h1 style={styles.logo}>DraftMate <span style={{ fontSize: 13, fontWeight: 400, color: '#888' }}>by Tin</span></h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12 }}>
           <span style={{ fontSize: 14, color: '#555' }}>{user?.displayName}</span>
           {user?.isAdmin && (
             <button onClick={() => navigate('/admin')} style={styles.adminBtn}>Admin</button>

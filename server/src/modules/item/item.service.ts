@@ -10,7 +10,7 @@ type UpdateItemInput = z.infer<typeof updateItemSchema>;
 
 export async function listItems(leagueId: string, availableOnly = false) {
   return prisma.draftItem.findMany({
-    where: { leagueId, ...(availableOnly ? { isAvailable: true } : {}) },
+    where: { leagueId, isDeleted: false, ...(availableOnly ? { isAvailable: true } : {}) },
     orderBy: [{ bucket: 'asc' }, { createdAt: 'asc' }],
   });
 }
@@ -54,10 +54,15 @@ export async function updateItem(leagueId: string, itemId: string, input: Update
   });
 }
 
-export async function deleteItem(leagueId: string, itemId: string) {
+export async function deleteItem(leagueId: string, itemId: string, force = false) {
   const item = await prisma.draftItem.findUnique({ where: { id: itemId } });
   if (!item || item.leagueId !== leagueId) throw new AppError(404, 'Item not found');
-  if (!item.isAvailable) throw new AppError(409, 'Cannot delete an already-picked item');
+  if (!item.isAvailable) {
+    if (!force) throw new AppError(409, 'Cannot delete an already-picked item');
+    // Soft-delete: keep the row (and its Pick) so the draft board retains history
+    await prisma.draftItem.update({ where: { id: itemId }, data: { isDeleted: true } });
+    return;
+  }
   await prisma.draftItem.delete({ where: { id: itemId } });
 }
 

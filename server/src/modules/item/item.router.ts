@@ -35,7 +35,8 @@ itemRouter.patch('/:id/items/:itemId', requireCommissioner(), validate(updateIte
 
 itemRouter.delete('/:id/items/:itemId', requireCommissioner(), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await itemService.deleteItem(req.params.id, req.params.itemId);
+    const force = req.query.force === 'true';
+    await itemService.deleteItem(req.params.id, req.params.itemId, force);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

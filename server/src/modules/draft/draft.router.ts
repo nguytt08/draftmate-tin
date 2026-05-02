@@ -108,7 +108,7 @@ draftRouter.post('/:id/draft/reset', requireCommissioner(), async (req: Request,
     // Wipe picks and reset items + draft state in one transaction
     await prisma.$transaction([
       prisma.pick.deleteMany({ where: { draftId: draft.id } }),
-      prisma.draftItem.updateMany({ where: { leagueId: req.params.id }, data: { isAvailable: true } }),
+      prisma.draftItem.updateMany({ where: { leagueId: req.params.id, isDeleted: false }, data: { isAvailable: true } }),
       prisma.draft.update({
         where: { id: draft.id },
         data: {

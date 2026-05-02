@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const BUCKET_PALETTE = [
   { bg: '#dbeafe', text: '#1e40af' },
@@ -19,6 +20,7 @@ function bucketColor(bucket: string, allBuckets: string[]) {
 }
 
 function CommissionerNoteInline({ leagueId, item }: { leagueId: string; item: { id: string; commissionerNotes?: string | null } }) {
+  const isMobile = useIsMobile();
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState(item.commissionerNotes ?? '');
   const qc = useQueryClient();
@@ -31,24 +33,26 @@ function CommissionerNoteInline({ leagueId, item }: { leagueId: string; item: { 
 
   if (editing) {
     return (
-      <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+      <div style={{ marginTop: 4 }}>
         <input
           autoFocus
-          style={{ flex: 1, padding: '3px 6px', border: '1px solid #93c5fd', borderRadius: 4, fontSize: 12 }}
+          style={{ width: '100%', boxSizing: 'border-box', padding: isMobile ? '6px 8px' : '3px 6px', border: '1px solid #93c5fd', borderRadius: 4, fontSize: 12 }}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
-          placeholder="Commissioner note (visible to all drafters)"
+          placeholder="Note..."
         />
-        <button onClick={save} style={{ padding: '2px 8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontSize: 12 }}>Save</button>
-        <button onClick={() => setEditing(false)} style={{ padding: '2px 6px', background: 'none', border: '1px solid #ddd', borderRadius: 4, fontSize: 12 }}>✕</button>
+        <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+          <button onClick={save} style={{ flex: 1, padding: isMobile ? '8px' : '2px 8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}>Save</button>
+          <button onClick={() => setEditing(false)} style={{ flex: 1, padding: isMobile ? '8px' : '2px 6px', background: 'none', border: '1px solid #ddd', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+        </div>
       </div>
     );
   }
 
   return (
     <div
-      style={{ fontSize: 12, color: note ? '#4b5563' : '#9ca3af', marginTop: 2, cursor: 'pointer' }}
+      style={{ fontSize: 12, color: note ? '#4b5563' : '#9ca3af', marginTop: 2, cursor: 'pointer', padding: isMobile ? '4px 0' : undefined }}
       onClick={() => setEditing(true)}
       title="Click to edit commissioner note"
     >
@@ -60,6 +64,7 @@ function CommissionerNoteInline({ leagueId, item }: { leagueId: string; item: { 
 type Item = { id: string; name: string; bucket?: string | null; isAvailable: boolean; commissionerNotes?: string | null };
 
 export default function LeagueSetup() {
+  const isMobile = useIsMobile();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
@@ -220,7 +225,19 @@ export default function LeagueSetup() {
   });
 
   const deleteItem = useMutation({
-    mutationFn: (itemId: string) => api.delete(`/leagues/${id}/items/${itemId}`),
+    mutationFn: async (itemId: string) => {
+      try {
+        return await api.delete(`/leagues/${id}/items/${itemId}`);
+      } catch (err: any) {
+        if (err?.response?.status === 409) {
+          const confirmed = window.confirm(
+            'This item has already been picked in the draft.\n\nForce-delete it? The draft board will show "(removed)" in its slot.',
+          );
+          if (confirmed) return api.delete(`/leagues/${id}/items/${itemId}?force=true`);
+        }
+        throw err;
+      }
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['items', id] }),
   });
 
@@ -245,7 +262,7 @@ export default function LeagueSetup() {
 
   return (
     <div style={styles.page}>
-      <header style={styles.header}>
+      <header style={{ ...styles.header, padding: isMobile ? '10px 16px' : '12px 24px' }}>
         <button onClick={() => navigate('/')} style={styles.backBtn}>← Back</button>
         <h1 style={styles.title}>{league?.name ?? 'League Setup'}</h1>
         {league?.draft?.status === 'ACTIVE' || league?.draft?.status === 'PAUSED' ? (
@@ -585,7 +602,7 @@ export default function LeagueSetup() {
           <section style={{ ...styles.card, marginTop: 16 }}>
             {/* Bucketed display */}
             {namedBuckets.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(namedBuckets.length + 1, 4)}, 1fr)`, gap: 12, marginTop: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(auto-fill, minmax(140px, 1fr))' : `repeat(${Math.min(namedBuckets.length, 3)}, 1fr) ${unbucketed.length === 0 ? 'minmax(60px, 110px)' : '1fr'}`, gap: 12, marginTop: 12 }}>
                 {namedBuckets.map((bucket) => {
                   const color = bucketColor(bucket, allBucketNames);
                   const isOver = dragOverBucket === bucket;
@@ -622,6 +639,16 @@ export default function LeagueSetup() {
                               )}
                             </div>
                             {isCommissioner && <CommissionerNoteInline leagueId={id!} item={item} />}
+                            {isCommissioner && isMobile && (
+                              <select
+                                value={item.bucket ?? ''}
+                                onChange={(e) => moveItem.mutate({ itemId: item.id, bucket: e.target.value || null })}
+                                style={{ marginTop: 6, width: '100%', padding: '5px 6px', fontSize: 12, border: '1px solid #ddd', borderRadius: 4 }}
+                              >
+                                <option value="">No bucket</option>
+                                {namedBuckets.map((b) => <option key={b} value={b}>{b}</option>)}
+                              </select>
+                            )}
                             {!isCommissioner && item.commissionerNotes && (
                               <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{item.commissionerNotes}</div>
                             )}
@@ -675,6 +702,16 @@ export default function LeagueSetup() {
                           )}
                         </div>
                         {isCommissioner && <CommissionerNoteInline leagueId={id!} item={item} />}
+                        {isCommissioner && isMobile && (
+                          <select
+                            value={item.bucket ?? ''}
+                            onChange={(e) => moveItem.mutate({ itemId: item.id, bucket: e.target.value || null })}
+                            style={{ marginTop: 6, width: '100%', padding: '5px 6px', fontSize: 12, border: '1px solid #ddd', borderRadius: 4 }}
+                          >
+                            <option value="">No bucket</option>
+                            {namedBuckets.map((b) => <option key={b} value={b}>{b}</option>)}
+                          </select>
+                        )}
                         {!isCommissioner && item.commissionerNotes && (
                           <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{item.commissionerNotes}</div>
                         )}

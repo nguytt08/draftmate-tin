@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 type Member = { id: string; displayName: string | null; inviteEmail: string | null; inviteStatus: string; reclaimable: boolean };
 type LeagueInfo = { id: string; name: string; allowSelfReclaim: boolean; members: Member[] };
@@ -12,6 +13,8 @@ function memberLabel(m: Member) {
 }
 
 export default function JoinDraft() {
+  const isMobile = useIsMobile();
+  const cardStyle: React.CSSProperties = { background: '#fff', padding: isMobile ? 20 : 32, borderRadius: 8, width: '100%', maxWidth: 420, boxShadow: '0 2px 12px rgba(0,0,0,0.1)' };
   const { code } = useParams<{ code: string }>();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [isReclaim, setIsReclaim] = useState(false);
@@ -62,7 +65,7 @@ export default function JoinDraft() {
   if (magicLink) {
     return (
       <div style={styles.container}>
-        <div style={styles.card}>
+        <div style={cardStyle}>
           <h2 style={{ marginBottom: 8 }}>{isReclaim ? 'Welcome back!' : "You're in!"}</h2>
           <p style={{ color: '#374151', marginBottom: 16, lineHeight: 1.5 }}>
             Save this link — it's how you get back into your session if you lose it.
@@ -96,7 +99,7 @@ export default function JoinDraft() {
   if (isLoading) return <div style={styles.center}>Loading…</div>;
   if (isError) return (
     <div style={styles.center}>
-      <div style={styles.card}>
+      <div style={cardStyle}>
         <h2 style={{ marginBottom: 8 }}>Link not found</h2>
         <p style={{ color: '#6b7280' }}>This join link may have expired or been revoked.</p>
       </div>
@@ -108,7 +111,7 @@ export default function JoinDraft() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.card}>
+      <div style={cardStyle}>
         <h1 style={styles.title}>Join "{league!.name}"</h1>
 
         {unclaimed.length === 0 && !league!.allowSelfReclaim ? (

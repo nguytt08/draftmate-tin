@@ -64,7 +64,7 @@ export function createPickTimerWorker(io: import('socket.io').Server) {
 
           // Pick a random available item
           const availableItems = await tx.draftItem.findMany({
-            where: { leagueId: league.id, isAvailable: true },
+            where: { leagueId: league.id, isAvailable: true, isDeleted: false },
           });
 
           if (availableItems.length === 0) return null;

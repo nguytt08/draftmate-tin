@@ -4,8 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { draftSocket } from '../socket/socket';
 import { useAuthStore } from '../store/authStore';
+import { useIsMobile } from '../hooks/useIsMobile';
 
-interface DraftItem { id: string; name: string; bucket?: string | null; isAvailable: boolean; metadata?: Record<string, unknown>; commissionerNotes?: string | null }
+interface DraftItem { id: string; name: string; bucket?: string | null; isAvailable: boolean; isDeleted?: boolean; metadata?: Record<string, unknown>; commissionerNotes?: string | null }
 interface Member { id: string; inviteEmail: string | null; displayName?: string | null; draftPosition: number; userId?: string; user?: { displayName: string } }
 
 function memberDisplay(m: { user?: { displayName: string } | null; displayName?: string | null; inviteEmail: string | null }): string {
@@ -21,6 +22,7 @@ interface DraftState {
 }
 
 export default function DraftRoom() {
+  const isMobile = useIsMobile();
   const { draftId } = useParams<{ draftId: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
@@ -252,20 +254,20 @@ export default function DraftRoom() {
   return (
     <div style={styles.page}>
       {/* Header */}
-      <header style={styles.header}>
+      <header style={{ ...styles.header, padding: isMobile ? '8px 12px' : '10px 20px', gap: isMobile ? 8 : 16, flexWrap: 'wrap' }}>
         <button onClick={() => navigate('/')} style={styles.backBtn}>← Dashboard</button>
-        <div style={{ flex: 1, textAlign: 'center' }}>
+        <div style={{ flex: 1, textAlign: 'center', minWidth: 120 }}>
           {leagueMeta?.name && <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 2 }}>{leagueMeta.name}</div>}
-          <span style={{ fontWeight: 700 }}>Round {draft.currentRound} · Pick {draft.currentPickNumber}</span>
+          <span style={{ fontWeight: 700, fontSize: isMobile ? 13 : 15 }}>R{draft.currentRound} · P{draft.currentPickNumber}</span>
           {draft.status === 'COMPLETED' && <span style={{ ...styles.badge, ...styles.badgeGreen, marginLeft: 8 }}>Complete</span>}
           {draft.status === 'PAUSED' && <span style={{ ...styles.badge, ...styles.badgeYellow, marginLeft: 8 }}>Paused</span>}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: '#888' }}>{onlineUsers.length} online</span>
-          {draft.timerEndsAt && <span style={{ fontWeight: 700, color: isMyTurn ? '#dc2626' : '#555' }}>{timerDisplay}</span>}
+          <span style={{ fontSize: 12, color: '#888' }}>{onlineUsers.length} 🟢</span>
+          {draft.timerEndsAt && <span style={{ fontWeight: 700, fontSize: 13, color: isMyTurn ? '#dc2626' : '#94a3b8' }}>{timerDisplay}</span>}
           {isCommissioner && (
             <button onClick={resetDraft} style={{ padding: '4px 10px', fontSize: 12, background: 'none', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4, cursor: 'pointer' }}>
-              Reset Draft
+              {isMobile ? '↺' : 'Reset Draft'}
             </button>
           )}
         </div>
@@ -288,10 +290,10 @@ export default function DraftRoom() {
         </div>
       )}
 
-      <div style={styles.body}>
+      <div style={{ ...styles.body, flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'flex-start', overflowX: isMobile ? 'visible' : 'auto', padding: isMobile ? 8 : 16 }}>
         {/* Item Pool */}
         {draft.status === 'ACTIVE' && (
-          <section style={styles.panel}>
+          <section style={{ ...styles.panel, minWidth: isMobile ? 0 : 220 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <h2 style={{ ...styles.panelTitle, marginBottom: 0 }}>Available ({availableItems.length})</h2>
               <button onClick={toggleNotes} style={{ padding: '3px 8px', fontSize: 12, background: 'none', border: '1px solid #d1d5db', color: '#6b7280', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
@@ -322,7 +324,7 @@ export default function DraftRoom() {
             />
 
             {hasBuckets && groupedItems ? (
-              <div style={{ overflowY: 'auto', maxHeight: 480 }}>
+              <div style={{ overflowY: 'auto', maxHeight: isMobile ? undefined : 480 }}>
                 {namedBuckets.map((bucket) => {
                   const blocked = isBucketBlocked(bucket);
                   const overrideBlocked = isOverrideBlocked(bucket);
@@ -351,7 +353,7 @@ export default function DraftRoom() {
                 )}
               </div>
             ) : (
-              <ul style={styles.itemList}>
+              <ul style={{ ...styles.itemList, maxHeight: isMobile ? undefined : 'calc(100vh - 220px)' }}>
                 {filteredItems.map((item) => renderItem(item, false))}
               </ul>
             )}
@@ -359,53 +361,90 @@ export default function DraftRoom() {
         )}
 
         {/* Draft Board */}
-        <section style={{ ...styles.panel, flex: 2, overflowX: 'auto' }}>
+        <section style={{ ...styles.panel, flex: isMobile ? 'none' : 2, overflowX: isMobile ? 'visible' : 'auto', minWidth: isMobile ? 0 : 220 }}>
           <h2 style={styles.panelTitle}>Draft Board</h2>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Round</th>
-                {members.map((m) => (
-                  <th key={m.id} style={{ ...styles.th, ...(m.id === draft.currentMemberId ? styles.thActive : {}) }}>
-                    {memberDisplay(m)}
-                    {onlineUsers.includes(m.userId ?? '') && <span style={styles.onlineDot} />}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
+          {isMobile ? (
+            // Mobile: round-by-round card grid
+            <div>
               {Array.from({ length: settings?.totalRounds ?? 0 }, (_, i) => i + 1).map((round) => (
-                <tr key={round}>
-                  <td style={styles.td}>{round}</td>
-                  {members.map((m) => {
-                    const pick = pickGrid[round]?.[m.id];
-                    return (
-                      <td key={m.id} style={{ ...styles.td, ...(pick ? {} : styles.tdEmpty) }}>
-                        {pick ? (
-                          <span title={pick.isAutoPick ? 'Auto-picked' : pick.isOverridePick ? 'Commissioner override' : ''} style={{ fontSize: 13 }}>
-                            {pick.item.name}
-                            {pick.isAutoPick && <span style={styles.autoPick}> ★</span>}
-                            {pick.isOverridePick && <span style={styles.overridePick}> 👑</span>}
-                          </span>
-                        ) : (
-                          round === draft.currentRound && m.id === draft.currentMemberId
-                            ? <span style={styles.onClock_small}>On clock</span>
-                            : null
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
+                <div key={round} style={{ marginBottom: 20 }}>
+                  <div style={styles.roundHeader}>Round {round}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {members.map((m, idx) => {
+                      const pick = pickGrid[round]?.[m.id];
+                      const isOnClock = round === draft.currentRound && m.id === draft.currentMemberId;
+                      const globalPickNum = (round - 1) * members.length + idx + 1;
+                      return (
+                        <div key={m.id} style={{ ...styles.pickCard, ...(isOnClock ? styles.pickCardActive : {}) }}>
+                          <div style={styles.cardMeta}>#{globalPickNum} · {memberDisplay(m)}{onlineUsers.includes(m.userId ?? '') && <span style={styles.onlineDot} />}</div>
+                          <div style={styles.cardItem}>
+                            {pick ? (
+                              pick.item.isDeleted
+                                ? <span style={{ textDecoration: 'line-through', color: '#9ca3af' }}>(removed)</span>
+                                : <>{pick.item.name}{pick.isAutoPick && <span style={styles.autoPick}> ★</span>}{pick.isOverridePick && <span style={styles.overridePick}> 👑</span>}</>
+                            ) : isOnClock ? (
+                              <span style={{ color: '#dc2626', fontWeight: 700 }}>On clock</span>
+                            ) : <span style={{ color: '#d1d5db' }}>—</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          ) : (
+            // Desktop: original table
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Round</th>
+                  {members.map((m) => (
+                    <th key={m.id} style={{ ...styles.th, ...(m.id === draft.currentMemberId ? styles.thActive : {}) }}>
+                      {memberDisplay(m)}
+                      {onlineUsers.includes(m.userId ?? '') && <span style={styles.onlineDot} />}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: settings?.totalRounds ?? 0 }, (_, i) => i + 1).map((round) => (
+                  <tr key={round}>
+                    <td style={styles.td}>{round}</td>
+                    {members.map((m) => {
+                      const pick = pickGrid[round]?.[m.id];
+                      return (
+                        <td key={m.id} style={{ ...styles.td, ...(pick ? {} : styles.tdEmpty) }}>
+                          {pick ? (
+                            pick.item.isDeleted ? (
+                              <span style={{ textDecoration: 'line-through', color: '#9ca3af', fontSize: 13 }}>(removed)</span>
+                            ) : (
+                            <span title={pick.isAutoPick ? 'Auto-picked' : pick.isOverridePick ? 'Commissioner override' : ''} style={{ fontSize: 13 }}>
+                              {pick.item.name}
+                              {pick.isAutoPick && <span style={styles.autoPick}> ★</span>}
+                              {pick.isOverridePick && <span style={styles.overridePick}> 👑</span>}
+                            </span>
+                            )
+                          ) : (
+                            round === draft.currentRound && m.id === draft.currentMemberId
+                              ? <span style={styles.onClock_small}>On clock</span>
+                              : null
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </section>
 
         {/* Pick History */}
-        <section style={{ ...styles.panel, maxWidth: 240 }}>
+        <section style={{ ...styles.panel, maxWidth: isMobile ? undefined : 240, minWidth: isMobile ? 0 : 220 }}>
           <h2 style={styles.panelTitle}>Recent Picks</h2>
           <ul style={{ listStyle: 'none', fontSize: 13 }}>
-            {[...picks].reverse().slice(0, 20).map((p) => (
+            {[...picks].reverse().slice(0, isMobile ? 10 : 20).map((p) => (
               <li key={p.id} style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
                 <div style={{ fontWeight: 500 }}>{p.item.name}</div>
                 <div style={{ color: '#888', fontSize: 12 }}>
@@ -437,7 +476,7 @@ const styles: Record<string, React.CSSProperties> = {
   itemList: { listStyle: 'none', maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' },
   itemRow: { display: 'flex', alignItems: 'flex-start', padding: '7px 8px', borderBottom: '1px solid #f0f0f0', gap: 8, borderRadius: 4, transition: 'background 0.1s' },
   itemRowHovered: { background: '#dbeafe' },
-  pickBtn: { padding: '4px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 600, fontSize: 13, flexShrink: 0 },
+  pickBtn: { padding: '6px 14px', minHeight: 36, background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 600, fontSize: 13, flexShrink: 0 },
   overrideBtn: { padding: '4px 10px', background: 'none', color: '#9ca3af', border: '1px solid #d1d5db', borderRadius: 4, fontWeight: 500, fontSize: 12, flexShrink: 0, cursor: 'pointer' },
   commNote: { fontSize: 12, color: '#6b7280', fontStyle: 'italic', marginTop: 3 },
   myNote: { fontSize: 12, color: '#2563eb', fontStyle: 'italic', marginTop: 3, cursor: 'pointer' },
@@ -455,4 +494,9 @@ const styles: Record<string, React.CSSProperties> = {
   badgeGreen: { background: '#dcfce7', color: '#15803d' },
   badgeYellow: { background: '#fef3c7', color: '#92400e' },
   onlineDot: { display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#22c55e', marginLeft: 4, verticalAlign: 'middle' },
+  roundHeader: { fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8, paddingBottom: 4, borderBottom: '1px solid #e5e7eb' },
+  pickCard: { background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: '8px 10px' },
+  pickCardActive: { border: '2px solid #2563eb', background: '#eff6ff' },
+  cardMeta: { fontSize: 11, color: '#6b7280', marginBottom: 4, whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
+  cardItem: { fontSize: 13, fontWeight: 500 },
 };

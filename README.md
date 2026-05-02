@@ -9,7 +9,7 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 - **Custom item pools** — commissioners define any pool of items to draft from (players, teams, movies, etc.); add items one at a time or bulk-import from a newline-separated list
 - **Bucket / category system** — items can be grouped into named buckets (e.g. UPPER, LOWER, GIRL, REC); displayed as columns in both the league setup and the draft room
 - **Enforce bucket picking** — optional commissioner setting that prevents drafters from picking more than one item per bucket; a live status bar in the draft room shows which buckets are used up
-- **Drag-and-drop bucket assignment** — commissioners can drag items between bucket columns in league setup to reassign them; dropping on the "No bucket" column clears the assignment
+- **Drag-and-drop bucket assignment** — commissioners can drag items between bucket columns in league setup to reassign them; dropping on the "No bucket" column clears the assignment; on mobile a per-item dropdown replaces drag since touch screens don't support HTML5 drag events
 - **Snake & linear formats** — with the strategy pattern in place for adding more formats later
 - **Email + SMS notifications** — via SendGrid and Twilio
 - **Inline item notes** — commissioner notes always visible below each item in the draft room; each drafter keeps private personal notes that appear inline and expand to edit on click; a "Hide Notes / Show Notes" toggle lives next to the Available count and persists across page loads
@@ -25,9 +25,11 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 - **Auto-save settings** — draft settings (rounds, timer, format, etc.) save automatically 800ms after any change; the Save button shows "Saving…" / "Saved ✓" feedback
 - **Dashboard navigation** — shows live draft status per league; active/paused drafts link to the draft room; completed drafts show a "View Results" button so the board stays accessible after the draft ends
 - **Delete league** — commissioner can permanently delete a league from the dashboard (✕ button on the card); confirmation dialog required; all members, items, picks, and draft data are removed
-- **Draft reset** — commissioner can wipe all picks and restart from pick 1 without leaving the draft room
+- **Draft reset** — commissioner can wipe all picks and restart from pick 1 without leaving the draft room; soft-deleted items are excluded from the availability reset so they remain removed
+- **Force-delete already-picked items** — attempting to delete an item that has already been picked shows a "cannot delete" notice; commissioner can force-delete it (soft-delete: `isDeleted` flag set, Pick row kept); the draft board shows `(removed)` with strikethrough in that slot so draft history is preserved; auto-pick and the available-items pool both exclude soft-deleted items; league deletion still cascades and removes the row entirely
 - **Secure auth** — JWT access tokens (15 min, auto-refreshed silently) + HttpOnly refresh tokens (30-day rotation)
 - **Admin impersonation panel** — site admin (identified by `ADMIN_EMAILS` env var, no schema changes) can view `/admin` to see all registered users with league/membership counts; "View as" button issues a 24h access token for any user so the admin sees exactly what they see — their leagues, draft state, settings — for debugging; a fixed purple banner shows who is being impersonated and an "Exit" button restores the admin's own session via cookie refresh; guest stub accounts (`@draftmate.internal`) are hidden from the list
+- **Mobile-responsive UI** — all pages adapt below 768px via a `useIsMobile` hook (no extra libraries); Draft Room collapses from three horizontal columns to a vertical stack with the item pool first; the draft board replaces the wide member-column table with a round-by-round 2-column card grid readable without horizontal scrolling; panels stretch full-width; LeagueSetup bucket grid wraps to auto-fill columns; commissioner notes editor stacks vertically on mobile; bucket reassignment uses a dropdown instead of drag-and-drop on touch screens
 
 ## Tech Stack
 
