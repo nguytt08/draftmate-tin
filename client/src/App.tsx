@@ -42,15 +42,19 @@ function ImpersonationBanner() {
   }
 
   return (
-    <div style={bannerStyle}>
-      Viewing as <strong>{impersonatingUser.displayName}</strong> ({impersonatingUser.email})
-      <button onClick={exit} style={exitBtnStyle}>Exit</button>
-    </div>
+    <>
+      <div style={bannerStyle}>
+        Viewing as <strong>{impersonatingUser.displayName}</strong> ({impersonatingUser.email})
+        <button onClick={exit} style={exitBtnStyle}>Exit</button>
+      </div>
+      <div style={{ height: 40 }} />
+    </>
   );
 }
 
 const bannerStyle: React.CSSProperties = {
   position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+  height: 40, boxSizing: 'border-box',
   background: '#7c3aed', color: '#fff', padding: '8px 16px',
   display: 'flex', alignItems: 'center', gap: 8, fontSize: 14,
 };
