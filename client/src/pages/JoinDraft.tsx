@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 
-type Member = { id: string; displayName: string | null; inviteEmail: string | null; inviteStatus: string };
+type Member = { id: string; displayName: string | null; inviteEmail: string | null; inviteStatus: string; reclaimable: boolean };
 type LeagueInfo = { id: string; name: string; allowSelfReclaim: boolean; members: Member[] };
 
 function memberLabel(m: Member) {
@@ -30,7 +30,7 @@ export default function JoinDraft() {
 
   function selectMember(m: Member, reclaim = false) {
     setSelectedMember(m);
-    setIsReclaim(reclaim);
+    setIsReclaim(reclaim && m.reclaimable);
     setDisplayName(m.displayName ?? (m.inviteEmail ? m.inviteEmail.split('@')[0] : ''));
     setError('');
   }
@@ -138,21 +138,40 @@ export default function JoinDraft() {
                   Already joined? Reclaim your slot.
                 </p>
                 <ul style={styles.memberList}>
-                  {claimed.map((m) => (
-                    <li
-                      key={m.id}
-                      style={{ ...styles.memberItem, ...styles.memberItemClaimed, ...(selectedMember?.id === m.id && isReclaim ? styles.memberItemSelected : {}) }}
-                      onClick={() => selectMember(m, true)}
-                    >
-                      {memberLabel(m)}
-                      <span style={styles.claimedBadge}>claimed</span>
-                    </li>
-                  ))}
+                  {claimed.map((m) => {
+                    const isSelected = selectedMember?.id === m.id;
+                    return (
+                      <li
+                        key={m.id}
+                        style={{
+                          ...styles.memberItem,
+                          ...styles.memberItemClaimed,
+                          ...(isSelected && isReclaim ? styles.memberItemSelected : {}),
+                          ...(isSelected && !m.reclaimable ? { border: '2px solid #f59e0b', background: '#fffbeb', color: '#92400e' } : {}),
+                        }}
+                        onClick={() => selectMember(m, true)}
+                      >
+                        {memberLabel(m)}
+                        <span style={styles.claimedBadge}>{m.reclaimable ? 'claimed' : 'account'}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </>
             )}
 
-            {selectedMember && !isReclaim && (
+            {selectedMember && !isReclaim && selectedMember.inviteStatus === 'ACCEPTED' && (
+              <div style={styles.confirmSection}>
+                <p style={{ fontSize: 14, color: '#374151', margin: 0 }}>
+                  <strong>{memberLabel(selectedMember)}</strong> has a registered account. Sign in with your email to access this draft.
+                </p>
+                <button style={{ ...styles.primaryBtn, background: '#2563eb' }} onClick={() => navigate('/login')}>
+                  Sign In →
+                </button>
+              </div>
+            )}
+
+            {selectedMember && !isReclaim && selectedMember.inviteStatus === 'PENDING' && (
               <div style={styles.confirmSection}>
                 <label style={styles.label}>Your name</label>
                 <input

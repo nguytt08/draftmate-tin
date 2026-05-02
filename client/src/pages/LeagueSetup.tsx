@@ -351,7 +351,7 @@ export default function LeagueSetup() {
                     checked={settingsForm.allowSelfReclaim}
                     onChange={(e) => setSettingsForm((f) => ({ ...f, allowSelfReclaim: e.target.checked }))}
                   />
-                  Allow members to reclaim their slot from the join page
+                  Allow self-reclaim on join page
                 </label>
                 {settingsForm.allowSelfReclaim && (
                   <span style={{ fontSize: 12, color: '#6b7280' }}>
@@ -388,9 +388,11 @@ export default function LeagueSetup() {
             {isCommissioner && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <input style={{ ...styles.input, flex: 1, minWidth: 0 }} placeholder="Name" value={inviteDisplayName}
-                  onChange={(e) => setInviteDisplayName(e.target.value)} />
+                  onChange={(e) => setInviteDisplayName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') inviteMember.mutate(); }} />
                 <input style={{ ...styles.input, flex: 1, minWidth: 0 }} placeholder="Email (optional)" value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)} />
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') inviteMember.mutate(); }} />
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -541,11 +543,12 @@ export default function LeagueSetup() {
             {isCommissioner && (
               <>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                  <input style={{ ...styles.input, flex: 2, minWidth: 0 }} placeholder="Item name" value={newItemName}
+                  <input className="placeholder-sm" style={{ ...styles.input, flex: 1, minWidth: 0 }} placeholder="Item name" value={newItemName}
                     onChange={(e) => setNewItemName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addItem.mutate()} />
-                  <input style={{ ...styles.input, flex: 1, minWidth: 0 }} placeholder="Bucket (e.g. UPPER)" value={newItemBucket}
+                  <input className="placeholder-sm" style={{ ...styles.input, flex: 1, minWidth: 0 }} placeholder="Bucket (e.g. UPPER)" value={newItemBucket}
                     onChange={(e) => setNewItemBucket(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') addItem.mutate(); }}
                     list="bucket-suggestions" />
                   <datalist id="bucket-suggestions">
                     {namedBuckets.map((b) => <option key={b} value={b} />)}

@@ -49,6 +49,9 @@ export default function Dashboard() {
         <h1 style={styles.logo}>DraftMate <span style={{ fontSize: 13, fontWeight: 400, color: '#888' }}>by Tin</span></h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 14, color: '#555' }}>{user?.displayName}</span>
+          {user?.isAdmin && (
+            <button onClick={() => navigate('/admin')} style={styles.adminBtn}>Admin</button>
+          )}
           <button onClick={logout} style={styles.logoutBtn}>Sign Out</button>
         </div>
       </header>
@@ -163,6 +166,7 @@ const styles: Record<string, React.CSSProperties> = {
   primaryBtn: { padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 600, fontSize: 14 },
   ghostBtn: { padding: '8px 16px', background: 'transparent', color: '#2563eb', border: '1px solid #2563eb', borderRadius: 4, fontWeight: 600, fontSize: 14 },
   logoutBtn: { padding: '6px 12px', background: 'transparent', color: '#666', border: '1px solid #ccc', borderRadius: 4, fontSize: 14 },
+  adminBtn: { padding: '6px 12px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
   badge: { display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 },
   badgeGreen: { background: '#dcfce7', color: '#15803d' },
   badgeYellow: { background: '#fef9c3', color: '#854d0e' },

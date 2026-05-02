@@ -16,9 +16,10 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 - **Member display names** — commissioners enter a display name when inviting members; names appear throughout the draft board and pick history; email addresses are not exposed to other members
 - **Magic link invites** — per-member: commissioner invites with name + optional email; invitee gets a 12-char link that authenticates them instantly, no password required; link is persistent and works as a re-login key
 - **Draft join link** — one shareable link per league; anyone with it sees the list of unclaimed member slots and self-selects their identity; after claiming, the page shows the user their personal recovery link to bookmark; commissioner can regenerate the code to revoke old links
+- **Self-reclaim on join page** — optional commissioner toggle ("Allow self-reclaim on join page" in draft settings); when enabled, all claimed slots appear at the bottom of the join page in a grayed-out section; clicking a guest/stub slot re-issues a fresh access link (reclaim flow); clicking a real registered-account slot prompts the user to sign in with their email instead — real accounts cannot be hijacked via the join page
 - **Session recovery** — after joining via the draft link, users are shown their personal magic link to save; commissioner can retrieve any member's magic link from the member list meatball menu (⋯ → Copy Magic Link); invite token stored in `localStorage` as a silent re-auth fallback for browsers that block cross-domain cookies (Safari ITP, Chrome on iOS); email/password users also receive a recovery token on login if they have a league membership, enabling the same silent re-auth without being booted on refresh
 - **Commissioner override pick** — commissioner can pick on behalf of whoever's current turn it is directly from the draft room; a muted "Override" button appears on each available item when it's not the commissioner's own turn; respects bucket enforcement (Override button disabled + bucket dimmed if current member already picked from that bucket); requires confirmation before submitting; picks made this way show a 👑 crown indicator on the draft board and "(commissioner pick)" in the pick history
-- **Commissioner self-join** — "Join as drafter" button in league setup adds the commissioner as a member linked to their existing account (no invite flow needed); "(You)" tag marks their slot in the member list
+- **Commissioner self-join** — "Join as drafter" button in league setup adds the commissioner as a member linked to their existing account (no invite flow needed); commissioner's real email is stored on the member slot so their row shows their email rather than "No email"; "(You)" tag marks their slot in the member list
 - **Member management** — commissioner can delete any member slot (✕), revoke a claimed member's access (resets to claimable), or copy their personal magic link; all from the member list in league setup
 - **Commissioner opt-in** — commissioners are not automatically added as a league member; they add themselves via the invite form if they want to participate as a drafter
 - **Auto-save settings** — draft settings (rounds, timer, format, etc.) save automatically 800ms after any change; the Save button shows "Saving…" / "Saved ✓" feedback
@@ -26,6 +27,7 @@ An async-friendly online draft app. Users don't need to be online at the same ti
 - **Delete league** — commissioner can permanently delete a league from the dashboard (✕ button on the card); confirmation dialog required; all members, items, picks, and draft data are removed
 - **Draft reset** — commissioner can wipe all picks and restart from pick 1 without leaving the draft room
 - **Secure auth** — JWT access tokens (15 min, auto-refreshed silently) + HttpOnly refresh tokens (30-day rotation)
+- **Admin impersonation panel** — site admin (identified by `ADMIN_EMAILS` env var, no schema changes) can view `/admin` to see all registered users with league/membership counts; "View as" button issues a 24h access token for any user so the admin sees exactly what they see — their leagues, draft state, settings — for debugging; a fixed purple banner shows who is being impersonated and an "Exit" button restores the admin's own session via cookie refresh; guest stub accounts (`@draftmate.internal`) are hidden from the list
 
 ## Tech Stack
 
@@ -131,6 +133,7 @@ All routes are prefixed with `/api/v1`. Most require a `Bearer <accessToken>` he
 | Group | Key Endpoints |
 |---|---|
 | Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/invite/magic/:token`, `POST /auth/invite/accept/:token` (password flow), `POST /auth/join/:code/claim` |
+| Admin | `GET /auth/admin/users` (requireAdmin), `POST /auth/admin/impersonate/:userId` (requireAdmin) |
 | Leagues | `POST /leagues`, `GET /leagues`, `GET /leagues/:id`, `PATCH /leagues/:id`, `DELETE /leagues/:id`, `PUT /leagues/:id/settings`, `GET /leagues/join/:code` (public) |
 | Members | `GET /leagues/:id/members`, `POST /leagues/:id/members/invite`, `POST /leagues/:id/members/randomize-order`, `PATCH /leagues/:id/members/:memberId`, `DELETE /leagues/:id/members/:memberId`, `POST /leagues/:id/members/:memberId/revoke`, `GET /leagues/:id/members/:memberId/magic-link` (commissioner), `POST /leagues/:id/join-code` |
 | Items | `GET /leagues/:id/items`, `POST /leagues/:id/items`, `POST /leagues/:id/items/bulk`, `PATCH /leagues/:id/items/:itemId`, `DELETE /leagues/:id/items/:itemId` |
@@ -167,6 +170,7 @@ Set these environment variables in the Railway service settings:
 | `NODE_ENV` | `production` |
 | `JWT_SECRET` | 64-char random string |
 | `APP_BASE_URL` | your frontend Railway URL (set after step 3) |
+| `ADMIN_EMAILS` | comma-separated list of emails that get admin access (e.g. `you@example.com`) |
 | `SENDGRID_API_KEY` | optional — email notifications |
 | `EMAIL_FROM` | optional |
 | `TWILIO_ACCOUNT_SID` | optional — SMS notifications |

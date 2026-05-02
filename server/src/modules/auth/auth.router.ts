@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { validate } from '../../middleware/validate';
-import { requireAuth } from '../../middleware/auth';
+import { requireAuth, requireAdmin } from '../../middleware/auth';
 import { registerSchema, loginSchema } from './auth.schema';
 import * as authService from './auth.service';
 import { config } from '../../config';
@@ -98,6 +98,24 @@ authRouter.post('/invite/accept/:token', async (req: Request, res: Response, nex
     const { accessToken, refreshToken, user } = await authService.acceptInvite(req.params.token, password, displayName);
     res.cookie(COOKIE_NAME, refreshToken, cookieOptions);
     res.json({ accessToken, user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.get('/admin/users', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const users = await authService.listAllUsers();
+    res.json({ users });
+  } catch (err) {
+    next(err);
+  }
+});
+
+authRouter.post('/admin/impersonate/:userId', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await authService.impersonateUser(req.params.userId);
+    res.json(result);
   } catch (err) {
     next(err);
   }

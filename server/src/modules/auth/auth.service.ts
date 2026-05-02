@@ -8,10 +8,16 @@ import type { RegisterInput, LoginInput } from './auth.schema';
 
 const BCRYPT_ROUNDS = 12;
 
-function generateAccessToken(userId: string, email: string, displayName: string): string {
-  return jwt.sign({ sub: userId, email, displayName }, config.JWT_SECRET, {
-    expiresIn: config.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
-  });
+function isAdminEmail(email: string): boolean {
+  return config.ADMIN_EMAILS.split(',').map((e) => e.trim()).filter(Boolean).includes(email);
+}
+
+function generateAccessToken(userId: string, email: string, displayName: string, isAdmin = false): string {
+  return jwt.sign(
+    { sub: userId, email, displayName, ...(isAdmin && { isAdmin: true }) },
+    config.JWT_SECRET,
+    { expiresIn: config.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
+  );
 }
 
 function generateRawRefreshToken(): string {
@@ -51,8 +57,8 @@ export async function register(input: RegisterInput) {
     },
   });
 
-  const accessToken = generateAccessToken(user.id, user.email, user.displayName);
-  return { accessToken, refreshToken: rawRefresh, user: { id: user.id, email: user.email, displayName: user.displayName } };
+  const accessToken = generateAccessToken(user.id, user.email, user.displayName, isAdminEmail(user.email));
+  return { accessToken, refreshToken: rawRefresh, user: { id: user.id, email: user.email, displayName: user.displayName, isAdmin: isAdminEmail(user.email) } };
 }
 
 export async function login(input: LoginInput) {
@@ -76,12 +82,13 @@ export async function login(input: LoginInput) {
     select: { inviteToken: true },
   });
 
-  const accessToken = generateAccessToken(user.id, user.email, user.displayName);
+  const admin = isAdminEmail(user.email);
+  const accessToken = generateAccessToken(user.id, user.email, user.displayName, admin);
   return {
     accessToken,
     refreshToken: rawRefresh,
     recoveryToken: memberWithToken?.inviteToken ?? null,
-    user: { id: user.id, email: user.email, displayName: user.displayName },
+    user: { id: user.id, email: user.email, displayName: user.displayName, isAdmin: admin },
   };
 }
 
@@ -106,8 +113,9 @@ export async function refresh(rawToken: string) {
     }),
   ]);
 
-  const accessToken = generateAccessToken(record.userId, record.user.email, record.user.displayName);
-  const user = { id: record.userId, email: record.user.email, displayName: record.user.displayName };
+  const admin = isAdminEmail(record.user.email);
+  const accessToken = generateAccessToken(record.userId, record.user.email, record.user.displayName, admin);
+  const user = { id: record.userId, email: record.user.email, displayName: record.user.displayName, isAdmin: admin };
   return { accessToken, refreshToken: rawNewRefresh, user };
 }
 
@@ -132,8 +140,8 @@ export async function magicLinkAccept(token: string, displayName?: string) {
     await prisma.refreshToken.create({
       data: { token: hashToken(rawRefresh), userId: member.user.id, expiresAt: refreshTokenExpiry() },
     });
-    const accessToken = generateAccessToken(member.user.id, member.user.email, member.user.displayName);
-    return { accessToken, refreshToken: rawRefresh, user: { id: member.user.id, email: member.user.email, displayName: member.user.displayName } };
+    const accessToken = generateAccessToken(member.user.id, member.user.email, member.user.displayName, isAdminEmail(member.user.email));
+    return { accessToken, refreshToken: rawRefresh, user: { id: member.user.id, email: member.user.email, displayName: member.user.displayName, isAdmin: isAdminEmail(member.user.email) } };
   }
 
   // First use: check expiry
@@ -167,14 +175,14 @@ export async function magicLinkAccept(token: string, displayName?: string) {
     data: { token: hashToken(rawRefresh), userId: user.id, expiresAt: refreshTokenExpiry() },
   });
 
-  const accessToken = generateAccessToken(user.id, user.email, user.displayName);
-  return { accessToken, refreshToken: rawRefresh, user: { id: user.id, email: user.email, displayName: user.displayName } };
+  const accessToken = generateAccessToken(user.id, user.email, user.displayName, isAdminEmail(user.email));
+  return { accessToken, refreshToken: rawRefresh, user: { id: user.id, email: user.email, displayName: user.displayName, isAdmin: isAdminEmail(user.email) } };
 }
 
 export async function joinClaim(code: string, memberId: string, displayName?: string) {
   const league = await prisma.league.findUnique({
     where: { joinCode: code },
-    include: { settings: { select: { allowSelfReclaim: true } } },
+    select: { id: true, settings: true },
   });
   if (!league) throw new AppError(404, 'Join link not found');
 
@@ -186,6 +194,11 @@ export async function joinClaim(code: string, memberId: string, displayName?: st
 
   if (member.inviteStatus === 'ACCEPTED') {
     if (!league.settings?.allowSelfReclaim) throw new AppError(409, 'This spot has already been claimed');
+    // Protect real accounts — only guest stub accounts are reclaimable via the join page.
+    // Real registered users (commissioner, email-invited) must sign in with their email.
+    if (!member.user?.email.endsWith('@draftmate.internal')) {
+      throw new AppError(403, 'This account is linked to a registered email. Sign in instead.');
+    }
     // Self-reclaim: re-issue a fresh token and new auth for the existing user
     const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
     const newInviteToken = Array.from(crypto.randomBytes(12)).map((b) => BASE62[b % 62]).join('');
@@ -194,8 +207,8 @@ export async function joinClaim(code: string, memberId: string, displayName?: st
     await prisma.refreshToken.create({
       data: { token: hashToken(rawRefresh), userId: member.user!.id, expiresAt: refreshTokenExpiry() },
     });
-    const accessToken = generateAccessToken(member.user!.id, member.user!.email, member.user!.displayName);
-    return { accessToken, refreshToken: rawRefresh, inviteToken: newInviteToken, user: { id: member.user!.id, email: member.user!.email, displayName: member.user!.displayName } };
+    const accessToken = generateAccessToken(member.user!.id, member.user!.email, member.user!.displayName, isAdminEmail(member.user!.email));
+    return { accessToken, refreshToken: rawRefresh, inviteToken: newInviteToken, user: { id: member.user!.id, email: member.user!.email, displayName: member.user!.displayName, isAdmin: isAdminEmail(member.user!.email) } };
   }
 
   const resolvedName = displayName?.trim() || member.displayName || 'Drafter';
@@ -226,8 +239,8 @@ export async function joinClaim(code: string, memberId: string, displayName?: st
     data: { token: hashToken(rawRefresh), userId: user.id, expiresAt: refreshTokenExpiry() },
   });
 
-  const accessToken = generateAccessToken(user.id, user.email, user.displayName);
-  return { accessToken, refreshToken: rawRefresh, inviteToken: member.inviteToken, user: { id: user.id, email: user.email, displayName: user.displayName } };
+  const accessToken = generateAccessToken(user.id, user.email, user.displayName, isAdminEmail(user.email));
+  return { accessToken, refreshToken: rawRefresh, inviteToken: member.inviteToken, user: { id: user.id, email: user.email, displayName: user.displayName, isAdmin: isAdminEmail(user.email) } };
 }
 
 export async function acceptInvite(token: string, password: string, displayName: string) {
@@ -255,6 +268,31 @@ export async function acceptInvite(token: string, password: string, displayName:
     data: { token: hashToken(rawRefresh), userId: user.id, expiresAt: refreshTokenExpiry() },
   });
 
-  const accessToken = generateAccessToken(user.id, user.email, user.displayName);
-  return { accessToken, refreshToken: rawRefresh, user: { id: user.id, email: user.email, displayName: user.displayName } };
+  const accessToken = generateAccessToken(user.id, user.email, user.displayName, isAdminEmail(user.email));
+  return { accessToken, refreshToken: rawRefresh, user: { id: user.id, email: user.email, displayName: user.displayName, isAdmin: isAdminEmail(user.email) } };
+}
+
+export async function listAllUsers() {
+  return prisma.user.findMany({
+    where: { NOT: { email: { endsWith: '@draftmate.internal' } } },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      createdAt: true,
+      _count: { select: { leagues: true, memberships: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+export async function impersonateUser(targetUserId: string) {
+  const target = await prisma.user.findUnique({ where: { id: targetUserId } });
+  if (!target) throw new AppError(404, 'User not found');
+  const accessToken = jwt.sign(
+    { sub: target.id, email: target.email, displayName: target.displayName },
+    config.JWT_SECRET,
+    { expiresIn: '24h' },
+  );
+  return { accessToken, user: { id: target.id, email: target.email, displayName: target.displayName } };
 }

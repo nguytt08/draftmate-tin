@@ -155,20 +155,29 @@ export async function getLeagueByJoinCode(code: string) {
       settings: { select: { allowSelfReclaim: true } },
       members: {
         where: { inviteStatus: { not: 'DECLINED' } },
-        select: { id: true, displayName: true, inviteEmail: true, inviteStatus: true },
+        select: {
+          id: true,
+          displayName: true,
+          inviteEmail: true,
+          inviteStatus: true,
+          user: { select: { email: true } },
+        },
         orderBy: { draftPosition: 'asc' },
       },
     },
   });
   if (!league) throw new AppError(404, 'Join link not found or expired');
   const allowSelfReclaim = league.settings?.allowSelfReclaim ?? false;
-  return {
-    ...league,
-    allowSelfReclaim,
-    members: allowSelfReclaim
-      ? league.members
-      : league.members.filter((m) => m.inviteStatus === 'PENDING'),
-  };
+
+  const members = league.members
+    .filter((m) => m.inviteStatus === 'PENDING' || (m.inviteStatus === 'ACCEPTED' && allowSelfReclaim))
+    .map(({ user, ...m }) => ({
+      ...m,
+      // Guests (stub accounts with no real email) can be reclaimed; real accounts must sign in
+      reclaimable: m.inviteStatus === 'PENDING' || (user?.email.endsWith('@draftmate.internal') ?? false),
+    }));
+
+  return { id: league.id, name: league.name, allowSelfReclaim, members };
 }
 
 export async function revokeMember(leagueId: string, memberId: string) {
@@ -208,6 +217,7 @@ export async function selfJoin(leagueId: string, userId: string) {
     data: {
       leagueId,
       userId,
+      inviteEmail: user.email,
       displayName: user.displayName,
       inviteStatus: 'ACCEPTED',
       inviteToken,

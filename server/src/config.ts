@@ -18,6 +18,7 @@ const envSchema = z.object({
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_PHONE_NUMBER: z.string().optional(),
   APP_BASE_URL: z.string().url().default('http://localhost:5173'),
+  ADMIN_EMAILS: z.string().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);

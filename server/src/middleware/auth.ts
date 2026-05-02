@@ -7,6 +7,7 @@ export interface JwtPayload {
   sub: string;
   email: string;
   displayName: string;
+  isAdmin?: boolean;
   iat: number;
   exp: number;
 }
@@ -33,6 +34,14 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   } catch {
     res.status(401).json({ error: 'Token expired or invalid' });
   }
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user?.isAdmin) {
+    res.status(403).json({ error: 'Admin access required' });
+    return;
+  }
+  next();
 }
 
 export function requireCommissioner(leagueIdParam = 'id') {

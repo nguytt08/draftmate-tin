@@ -33,6 +33,7 @@ export default function DraftRoom() {
   const [myNotes, setMyNotes] = useState<Record<string, string>>({});
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
 
   const { data: leagueMeta } = useQuery<{ id: string; commissionerId: string; name: string } | null>({
     queryKey: ['draft-league', draftId],
@@ -204,7 +205,12 @@ export default function DraftRoom() {
     const isEditing = editingNoteId === item.id;
 
     return (
-      <li key={item.id} style={styles.itemRow}>
+      <li
+        key={item.id}
+        style={{ ...styles.itemRow, ...(hoveredItemId === item.id ? styles.itemRowHovered : {}) }}
+        onMouseEnter={() => setHoveredItemId(item.id)}
+        onMouseLeave={() => setHoveredItemId(null)}
+      >
         <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{ fontSize: 14 }}>{item.name}</span>
           {showNotes && (
@@ -429,7 +435,8 @@ const styles: Record<string, React.CSSProperties> = {
   panelTitle: { fontSize: 15, fontWeight: 700, marginBottom: 12 },
   input: { padding: '7px 10px', border: '1px solid #ddd', borderRadius: 4, fontSize: 14 },
   itemList: { listStyle: 'none', maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' },
-  itemRow: { display: 'flex', alignItems: 'flex-start', padding: '7px 0', borderBottom: '1px solid #f0f0f0', gap: 8 },
+  itemRow: { display: 'flex', alignItems: 'flex-start', padding: '7px 8px', borderBottom: '1px solid #f0f0f0', gap: 8, borderRadius: 4, transition: 'background 0.1s' },
+  itemRowHovered: { background: '#dbeafe' },
   pickBtn: { padding: '4px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 600, fontSize: 13, flexShrink: 0 },
   overrideBtn: { padding: '4px 10px', background: 'none', color: '#9ca3af', border: '1px solid #d1d5db', borderRadius: 4, fontWeight: 500, fontSize: 12, flexShrink: 0, cursor: 'pointer' },
   commNote: { fontSize: 12, color: '#6b7280', fontStyle: 'italic', marginTop: 3 },
