@@ -27,3 +27,7 @@ export const inviteMemberSchema = z.object({
 export const setDraftPositionSchema = z.object({
   draftPosition: z.number().int().min(1),
 });
+
+export const cloneLeagueSchema = z.object({
+  name: z.string().min(1).max(100),
+});

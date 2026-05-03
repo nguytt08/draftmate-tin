@@ -174,6 +174,9 @@ export default function LeagueSetup() {
       setInviteDisplayName('');
       setInvitePhone('');
     },
+    onError: (err: any) => {
+      alert(err?.response?.data?.error ?? 'Failed to invite member');
+    },
   });
 
   const randomizeOrder = useMutation({
@@ -426,9 +429,12 @@ export default function LeagueSetup() {
               </div>
             )}
             {draftLocked && isCommissioner && (
-              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8, marginTop: 0 }}>
-                Draft order is locked while a draft is active. Reset the draft from the Draft Room to reorder.
-              </p>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, padding: '8px 12px', marginBottom: 8 }}>
+                <span style={{ fontSize: 15, lineHeight: 1, flexShrink: 0 }}>🔒</span>
+                <p style={{ margin: 0, fontSize: 12, color: '#92400e', lineHeight: 1.4 }}>
+                  Draft order is locked while a draft is active. Reset the draft from the Draft Room to reorder.
+                </p>
+              </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
               <button style={{ ...styles.ghostBtn, minWidth: 0 }} onClick={() => randomizeOrder.mutate()} disabled={draftLocked}>

@@ -16,6 +16,66 @@ type UpdateLeagueInput = z.infer<typeof updateLeagueSchema>;
 type DraftSettingsInput = z.infer<typeof draftSettingsSchema>;
 type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
 
+export async function cloneLeague(sourceLeagueId: string, clonerId: string, leagueName: string) {
+  const source = await prisma.league.findUniqueOrThrow({
+    where: { id: sourceLeagueId },
+    include: {
+      settings: true,
+      items: { where: { isDeleted: false } },
+      members: {
+        where: { inviteStatus: { not: 'DECLINED' } },
+        orderBy: { draftPosition: 'asc' },
+      },
+    },
+  });
+
+  const s = source.settings;
+
+  const newLeague = await prisma.league.create({
+    data: {
+      name: leagueName,
+      commissionerId: clonerId,
+      settings: {
+        create: {
+          format: s?.format ?? 'SNAKE',
+          totalRounds: s?.totalRounds ?? 3,
+          pickTimerSeconds: s?.pickTimerSeconds ?? 7200,
+          autoPick: s?.autoPick ?? 'COMMISSIONER_PICK',
+          allowTrading: s?.allowTrading ?? false,
+          enforceBucketPicking: s?.enforceBucketPicking ?? false,
+          allowSelfReclaim: s?.allowSelfReclaim ?? false,
+          ...(s?.extendedConfig != null && { extendedConfig: s.extendedConfig as Prisma.InputJsonValue }),
+        },
+      },
+    },
+  });
+
+  if (source.items.length > 0) {
+    await prisma.draftItem.createMany({
+      data: source.items.map((item) => ({
+        leagueId: newLeague.id,
+        name: item.name,
+        bucket: item.bucket ?? undefined,
+        metadata: item.metadata !== null ? (item.metadata as Prisma.InputJsonValue) : undefined,
+        commissionerNotes: item.commissionerNotes ?? undefined,
+      })),
+    });
+  }
+
+  if (source.members.length > 0) {
+    await prisma.leagueMember.createMany({
+      data: source.members.map((m) => ({
+        leagueId: newLeague.id,
+        displayName: m.displayName ?? m.inviteEmail?.split('@')[0] ?? 'Member',
+        draftPosition: m.draftPosition ?? undefined,
+        inviteStatus: 'PENDING' as const,
+      })),
+    });
+  }
+
+  return newLeague;
+}
+
 export async function createLeague(commissionerId: string, input: CreateLeagueInput) {
   const league = await prisma.league.create({
     data: {
@@ -99,7 +159,14 @@ export async function listMembers(leagueId: string) {
 }
 
 export async function inviteMember(leagueId: string, commissionerId: string, input: InviteMemberInput) {
-  const league = await prisma.league.findUniqueOrThrow({ where: { id: leagueId } });
+  const league = await prisma.league.findUniqueOrThrow({
+    where: { id: leagueId },
+    include: { draft: { select: { status: true } } },
+  });
+
+  if (league.draft?.status === 'ACTIVE' || league.draft?.status === 'PAUSED') {
+    throw new AppError(400, 'Cannot invite members while a draft is active. Reset the draft first to make roster changes.');
+  }
 
   if (input.email) {
     const existing = await prisma.leagueMember.findFirst({
@@ -215,7 +282,14 @@ export async function deleteLeague(leagueId: string) {
 }
 
 export async function selfJoin(leagueId: string, userId: string) {
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const [user, draft] = await Promise.all([
+    prisma.user.findUniqueOrThrow({ where: { id: userId } }),
+    prisma.draft.findFirst({ where: { leagueId }, select: { status: true } }),
+  ]);
+
+  if (draft?.status === 'ACTIVE' || draft?.status === 'PAUSED') {
+    throw new AppError(400, 'Cannot add members while a draft is active. Reset the draft first to make roster changes.');
+  }
   const inviteToken = Array.from(crypto.randomBytes(12)).map((b) => BASE62[b % 62]).join('');
   const maxPos = await prisma.leagueMember.aggregate({ where: { leagueId }, _max: { draftPosition: true } });
   const nextPosition = (maxPos._max.draftPosition ?? 0) + 1;

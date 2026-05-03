@@ -7,6 +7,7 @@ import {
   draftSettingsSchema,
   inviteMemberSchema,
   setDraftPositionSchema,
+  cloneLeagueSchema,
 } from './league.schema';
 import * as leagueService from './league.service';
 
@@ -121,5 +122,12 @@ leagueRouter.post('/:id/join-code', requireCommissioner(), async (req: Request, 
   try {
     const league = await leagueService.upsertJoinCode(req.params.id);
     res.json({ joinCode: league.joinCode });
+  } catch (err) { next(err); }
+});
+
+leagueRouter.post('/:id/clone', requireCommissioner(), validate(cloneLeagueSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const league = await leagueService.cloneLeague(req.params.id, req.user!.sub, req.body.name);
+    res.status(201).json(league);
   } catch (err) { next(err); }
 });

@@ -21,7 +21,7 @@ model User {
   refreshTokens RefreshToken[]
   memberships   LeagueMember[]
   picks         Pick[]
-  leagues       League[]       @relation("CommissionerLeagues")
+  leagues       League[]         @relation("CommissionerLeagues")
 }
 
 model RefreshToken {
@@ -233,3 +233,4 @@ enum TimerJobStatus {
   CANCELLED
   FIRED
 }
+
